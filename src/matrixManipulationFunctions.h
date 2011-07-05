@@ -1,0 +1,14 @@
+// using namespace arma;
+void subVector_FromIndices(arma::colvec& reducedVec,const arma::colvec& FullColVec, const arma::ucolvec& aux_blockMe);
+void subVector_ShedIndices(arma::colvec& reducedVec,const arma::colvec& FullColVec, const arma::ucolvec& aux_blockMe);
+void placeInVec(arma::rowvec& B_i_aux, const arma::colvec& B_block, const arma::ucolvec& aux_blockMe);
+void getCAndC_offDiag(arma::mat& reduced_C, arma::mat& C_offDiag, const arma::mat& C, const arma::ucolvec& aux_blockMe);
+void shedRow(arma::mat& Y , const arma::mat& X, const int& i);
+void shedRowAndColumn(arma::mat& Y , const arma::mat& X, const int& i, const int& genes);
+void subMatFromVector(arma::mat& reduced_C, const arma::mat& C, const arma::urowvec& logicVector);
+void subVectorFromVector(arma::rowvec& reduced_v, const arma::rowvec& v, const arma::urowvec& logicVector);
+void fillMatRowWithVecAndZeros(arma::mat& B, const arma::colvec& b_new, const int&i, const arma::urowvec& logicVector);
+arma::mat reorderMatColsFromVec(const arma::mat& B, const arma::colvec& newOrder);
+arma::rowvec generate_seq(int start, int end);
+arma::mat DiagnalBlockMat(const arma::mat& A, int num_repeats);
+void placeVecInVec_FromVec(arma::colvec& v, const arma::colvec& u, const arma::ucolvec& replaceMe);

@@ -1,0 +1,13 @@
+useDynLib(GRENITS)
+exportPattern("^[[:alpha:]]+")
+#importFrom(ggplot2, ggplot.data.frame, aes, facet_grid, geom_tile, ggplot, labs, opts,
+#           scale_fill_gradient, scale_x_discrete, scale_y_discrete,
+#           theme_blank, theme_text, GeomTile, Geom)
+#importClassesFrom(ggplot2, Geom)
+#importFrom(proto, proto)
+importFrom(graphics, barplot, legend, lines, mtext, par, plot, points,
+            polygon,   title)
+importFrom(grDevices, dev.off, pdf)
+importFrom(reshape, melt)
+importFrom(stats, dbeta, density, dgamma, dnorm)
+importFrom(utils, read.table, write.table)

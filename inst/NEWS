@@ -1,0 +1,27 @@
+-*-Text-*-
+		      GRENITS package
+		  ========================
+
+Version 1.4.0 (2011-03-22)
+------------------------------------------------------------------------------
+
+* Change use of multiple setwd for full path
+* In Progress (To be released in 1.6.0)
+  - Fix parts of Network (on/off)
+  - Choose which genes are regulators 
+  - C++ speed ups
+
+
+Version 1.2.0 (2011-03-06)
+------------------------------------------------------------------------------
+
+* Use of tempdir() in examples
+* Speed up of examples
+
+
+Version 1.0.0 (2011-02-21)
+------------------------------------------------------------------------------
+
+* Initial release!
+* TODO 
+  - Choose which genes are regulators 
