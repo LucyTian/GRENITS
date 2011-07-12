@@ -1,3 +1,62 @@
+.getSquareMatIndicesFromFlat <- function(flatIndex, matSize)
+{
+  colIndex              <- ceiling(flatIndex/matSize)
+  rowIndex              <- flatIndex%%matSize
+  rowIndex[rowIndex==0] <- matSize
+  cbind(rowIndex,colIndex)
+}
+
+.makeFixedGammasMat <- function(genes, Regulators.vec, fixMe)
+{
+  if (is.null(fixMe)){   
+    fixMe       <- matrix(NaN, genes, genes)
+    diag(fixMe) <- 1
+  }
+
+  if (!is.null(Regulators.vec)){
+    # Make non regulators index vector
+    nonRegs.indx         <- 1:genes
+    nonRegs.indx         <- nonRegs.indx[-1*Regulators.vec]
+    # Store self interaction element
+    diag.aux             <- diag(fixMe)    
+    # Fix non regulators regulation elems to off
+    fixMe[,nonRegs.indx] <- 0
+    # Restore self interaction to initial value
+    diag(fixMe)          <- diag.aux
+  } 
+  fixMe
+}
+
+.readLargeFileReturnMean_c <- function(file.name)
+{
+  aa <- .Call("readLargeFileGetMean", file.name, PACKAGE = "GRENITS")
+  aa
+}
+
+.readGammaFile_Return_MeanAndNumParents_c <- function(file.name, linksFixed)
+{  
+  aa <- .Call("readGamma_getMean_numParents", file.name, as.matrix(linksFixed), PACKAGE = "GRENITS")
+  aa
+}
+
+
+.readLargeFileReturnMean <- function(Bfile, chain.len)
+{
+  con_B         <- file(Bfile, "r")
+  B.j           <- scan(con_B, nlines  =1, sep=",", quiet = T) #, flush = T)
+  sumB          <- B.j
+  for(j in 2:chain.len)
+  {    
+#     B.j <- try(scan(con_B, nlines  =1, sep=",", quiet = T), silent = T)
+    B.j  <- scan(con_B, nlines  =1, sep=",", quiet = T)
+    sumB <- sumB + B.j
+  }
+  close(con_B)
+  # Return mean
+  sumB/chain.len
+}
+
+
 .paramVecType <- function(parameter.vec)
 {
   length.priors <- length(parameter.vec)
@@ -52,7 +111,7 @@
   {
     geneNames <- paste("G", 1:numGenes)
   }
-  write.table(geneNames, paste(resultsFolder, "/geneNames.txt", sep="") )
+  write.table(geneNames, paste(resultsFolder, "/geneNames.txt", sep=""))
 }
 
 
@@ -81,14 +140,20 @@
   genes     <- sqrt(length(link.prob.1))
   if ( nonTF == 0 | genes == nonTF)
   {
-    diag.elem <- diag(matrix(1:length(link.prob.1), genes,genes))
+    diag.elem <- diag(matrix(1:length(link.prob.1), genes, genes))
   }else{
     diag.elem <- matrix(1:length(link.prob.1), nrow = nonTF)[,1]
   }
   
+  remove.me <- NULL
+  ## If large, remove links (<0.01) 
+  if(length(link.prob.1)> 1000)
+  {	
+    remove.me <- which(link.prob.1 < 0.01)
+  }
   ## Remove diagonals
 #   links <- sort(link.prob.1[-diag.elem], decreasing =T)
-  link.noDiag <- link.prob.1[-diag.elem]
+  link.noDiag <- link.prob.1[-c(diag.elem, remove.me)]
   new.order   <- order(link.noDiag , decreasing =T)
   links       <- link.noDiag[new.order]
   numLinks    <- length(links)
@@ -113,14 +178,24 @@
 ## -----------------------------------------------------------------------------------------------
 ##  Heatmap using ggplot              ------------------------------------------------------------
 ## -----------------------------------------------------------------------------------------------
-.heatMap.ggplot <- function(prob.mat)
+.heatMap.ggplot <- function(prob.mat, size.max = 80)
 {
+      title.string <- "Link Probability"
+      ## If too large, sub select
+      if(dim(prob.mat)[1]> size.max)
+      {
+	topNumLinks <- floor(size.max/2)
+	prob.mat.largest <- order(prob.mat, decreasing= T)
+	rowsAndCols      <- as.vector(.getSquareMatIndicesFromFlat(prob.mat.largest[1:topNumLinks], dim(prob.mat)[1]))
+	prob.mat         <- prob.mat[rowsAndCols, rowsAndCols]
+	title.string     <- paste(title.string, "(Selected genes)")
+      }
       all.m <- melt(as.matrix(prob.mat))
       (p <- ggplot(all.m, aes(X2, X1)) + 
       geom_tile(aes(fill = value),colour = "white") + 
       scale_fill_gradient(low = "white",     high = "steelblue", limits = c(0,1)) +
       opts(axis.ticks = theme_blank(), axis.text.x = theme_text(angle = 30, hjust = 1), 
-      title = "Link Probability") +
+      title = title.string) +
       labs(x = "Regulator", y = "Regulated") +
       scale_x_discrete(expand = c(0, 0)) +
       scale_y_discrete(expand = c(0, 0)) 
@@ -382,6 +457,7 @@
   genes       <- dim(scaled.data)[1]
   probs1      <- matrix(link.probs1, genes, genes)
   index.flat  <- matrix(  1:genes^2, genes, genes)
+  diag(probs1) <-1 
   for (i in 1:genes)
   {  
     whichParents <- which(probs1[i,]>plot.thresh)

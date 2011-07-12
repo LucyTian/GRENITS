@@ -5,63 +5,87 @@
   file.name.2 <- paste(output.folder, "/chain2", sep="")
 
   ## Read data
-  lambda.mcmc.1 <- .readFast(paste(file.name.1, "/Lambda_mcmc", sep=""))
-  mu.1          <- .readFast(paste(file.name.1, "/Mu_mcmc", sep=""))
-  ro.1          <- .readFast(paste(file.name.1, "/Rho_mcmc", sep=""))
-  gamma.1       <- .readFast(paste(file.name.1, "/Gamma_mcmc", sep="")) 
-  coeff.1       <- .readFast(paste(file.name.1, "/B_mcmc", sep="")) 
+  lambda.mean.1        <- .readLargeFileReturnMean_c(paste(file.name.1, "/Lambda_mcmc", sep=""))
+  mu.mean.1            <- .readLargeFileReturnMean_c(paste(file.name.1, "/Mu_mcmc", sep=""))
+  ro.mean.1            <- .readLargeFileReturnMean_c(paste(file.name.1, "/Rho_mcmc", sep=""))
+#   meanProbs1    <- .readLargeFileReturnMean_c("Gamma_mcmc")
+  meancoeff1           <- .readLargeFileReturnMean_c(paste(file.name.1, "/B_mcmc", sep=""))  
+  fixedGammaMat        <- as.matrix(read.table(paste(file.name.1, "/FixedGammaFile", sep="")))
+  meanProbs_NumParents <- .readGammaFile_Return_MeanAndNumParents_c(paste(file.name.1, "/Gamma_mcmc", sep=""), fixedGammaMat)
+  fixedGammaMat        <- as.vector(fixedGammaMat)
+  meanProbs1           <- meanProbs_NumParents[[1]]
+  numParents           <- meanProbs_NumParents[[2]]
 
-  lambda.mcmc.2 <- .readFast(paste(file.name.2, "/Lambda_mcmc", sep=""))
-  mu.2          <- .readFast(paste(file.name.2, "/Mu_mcmc", sep=""))
-  ro.2          <- .readFast(paste(file.name.2, "/Rho_mcmc", sep=""))
-  gamma.2       <- .readFast(paste(file.name.2, "/Gamma_mcmc", sep="")) 
-  coeff.2       <- .readFast(paste(file.name.2, "/B_mcmc", sep="")) 
+  lambda.mean.2 <- .readLargeFileReturnMean_c(paste(file.name.2, "/Lambda_mcmc", sep=""))
+  mu.mean.2     <- .readLargeFileReturnMean_c(paste(file.name.2, "/Mu_mcmc", sep=""))
+  ro.mean.2     <- .readLargeFileReturnMean_c(paste(file.name.2, "/Rho_mcmc", sep=""))
+  meanProbs2    <- .readLargeFileReturnMean_c(paste(file.name.2, "/Gamma_mcmc", sep=""))
+  meancoeff2    <- .readLargeFileReturnMean_c(paste(file.name.2, "/B_mcmc", sep=""))  
 
-
-  genes <- dim(lambda.mcmc.1)[2]
+  genes <- length(lambda.mean.2)
   pdf(paste(output.folder, "/ConvergencePlots.pdf", sep=""), 9, 12, title = "ConvergencePlots.pdf")
     old.par <- par(no.readonly = TRUE)
     par(mfrow = c(3,2))
-    plot(colMeans(gamma.1), colMeans(gamma.2), xlab = chain.names[1], ylab = chain.names[2], main = "Gammas")
+    plot(meanProbs1, meanProbs2, xlab = chain.names[1], ylab = chain.names[2], main = "Gammas")
     lines(c(-100,100), c(-100,100), col= "red")
 
-    plot(colMeans(coeff.1), colMeans(coeff.2), xlab = chain.names[1], ylab = chain.names[2], main = "B") #, col = col.i)
+    plot(meancoeff1, meancoeff2, xlab = chain.names[1], ylab = chain.names[2], main = "B") #, col = col.i)
     lines(c(-100,100), c(-100,100), col= "red")
 
-    plot(colMeans(ro.1), colMeans(ro.2), xlab = chain.names[1], ylab = chain.names[2], main = "Rho") #, col = col.i)
+    plot(ro.mean.1, ro.mean.2, xlab = chain.names[1], ylab = chain.names[2], main = "Rho") #, col = col.i)
     lines(c(-100,100), c(-100,100), col= "red")
 
-    plot(colMeans( lambda.mcmc.1), colMeans( lambda.mcmc.2), xlab = chain.names[1], ylab = chain.names[2], main = "Lambda")#, col = col.i)
+    plot(lambda.mean.1, lambda.mean.2, xlab = chain.names[1], ylab = chain.names[2], main = "Lambda")#, col = col.i)
     lines(c(-100,100000), c(-100,100000), col= "red")
 
-    plot(colMeans( mu.1), colMeans( mu.2), xlab = chain.names[1], ylab = chain.names[2], main = "Mu")#, col = col.i)
+    plot(mu.mean.1, mu.mean.2, xlab = chain.names[1], ylab = chain.names[2], main = "Mu")#, col = col.i)
     lines(c(-100,1000), c(-100,1000), col= "red")
     par(old.par)
   dev.off()
 
-  mean.B             <- matrix(colMeans(coeff.1), genes, genes)
+  ## Use fixed gamma info for gamma
+  notfixed.indx                <- !is.finite(fixedGammaMat)
+  fullMeanGamma                <- fixedGammaMat
+  fullMeanGamma[notfixed.indx] <- meanProbs1
+  # make a copy with fixed elements set to zero
+
+  ## Use fixed gamma info for B
+  reg.indx             <- which(notfixed.indx | fixedGammaMat == 1)
+  fullMeanB            <- fixedGammaMat
+  fullMeanB[reg.indx ] <- meancoeff1
+
+#   mean.B             <- matrix(meancoeff1, genes, genes)
+  mean.B             <- matrix(fullMeanB, genes, genes)
   rownames(mean.B )  <- colnames(mean.B) <- geneNames  
 
-  net.prob           <- matrix(colMeans(gamma.1), genes, genes)
+#   net.prob           <- matrix(meanProbs1, genes, genes)
+  net.prob           <- matrix(fullMeanGamma, genes, genes)
   rownames(net.prob) <- colnames(net.prob) <- geneNames  
   diag(net.prob)     <- 0
 
+  probMat_withZeros                 <- net.prob
+  probMat_withZeros[!notfixed.indx] <- 0
 
   pdf(paste(output.folder, "/AnalysisPlots.pdf", sep=""), 9, 9, title = "AnalysisPlots.pdf")
     ## Network Heatmap
     .heatMap.ggplot(net.prob)
-    ## Marginal uncertainty plot
-    .marginalUncertaintyPlot(gamma.1, geneNames)
     ## Plot links per cutoff
-    .plotCutOffGammas(colMeans(gamma.1),  main.text = "Number of links included in model vs Threshold used")
+    .plotCutOffGammas(as.vector(net.prob),  main.text = "Number of links included in model vs Threshold used")
+    ## Marginal uncertainty plot
+    .plotDistribParents.LargeMat(probMat_withZeros, numParents, geneNames)
   dev.off()
+  rownames(numParents) <- geneNames
+  colnames(numParents) <- paste(0:length(geneNames), "Regulators")
+  ## Write to file num parents
+  write.table(numParents, paste(output.folder, "/ProbNumParents.txt", sep=""))
+
 
   ## Check link marginals have "reasonably" converged 
-  .linkConvergenceMessage(cbind(colMeans(gamma.1), colMeans(gamma.2)))
+  .linkConvergenceMessage(cbind(meanProbs1, meanProbs2))
 
   netLink  <- which(net.prob > -1, T)
-  cytoNet  <- data.frame(geneNames[netLink[,2]], 
-	      geneNames[netLink[,1]], net.prob[netLink], mean.B[netLink])
+  cytoNet  <- data.frame(geneNames[netLink[,2]], geneNames[netLink[,1]], 
+			      net.prob[netLink],        mean.B[netLink])
   colnames(cytoNet) <- c("From", "To", "Probability", "Strength")
   write.table(cytoNet, paste(output.folder, "/NetworkProbability_List.txt", sep=""), row.names=F, quote=F, sep="\t")
 

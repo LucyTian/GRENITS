@@ -10,9 +10,11 @@ using namespace arma;
 #include <string>
 #include <cstdio>
 #include <ctime>
+// ZZ Profiler!!!!!
+// #include <google/profiler.h>
 
 
-void Error_Gauss_c(string& ResultsFolder, mat &x_R, colvec &ParamVec_C)
+void Error_Gauss_c(string& ResultsFolder, mat &x_R, colvec &ParamVec_C, mat &Gamma_fixed)
 {
    // Declare variables -----------------------------------------------------------
   // -----------------------------------------------------------------------------
@@ -22,7 +24,6 @@ void Error_Gauss_c(string& ResultsFolder, mat &x_R, colvec &ParamVec_C)
   double               c, d, a, b, a_exp, b_exp, sigmaS, sigmaMu;
   ucolvec                                      informTimeFlag(2);
   clock_t start_t;
-  start_t = clock();
   informTimeFlag.ones();
 
   // .. Loop vars
@@ -45,10 +46,12 @@ void Error_Gauss_c(string& ResultsFolder, mat &x_R, colvec &ParamVec_C)
   colvec                                           Xhat_sqr;
   
   // .. Aux parameters
-  int                  numDiag, p_sqr, free_gammas;
-  mat                          Cplus, cplus_aux, C;
-  colvec           shape_lamExp, mean_xt, mean_xt1;
-  double            logS, eta_mu, eta_s, shape_eta;
+  int           num_fixedON, numDiag, p_sqr, free_gammas;
+  mat                                Cplus, cplus_aux, C;
+  colvec                 shape_lamExp, mean_xt, mean_xt1;
+  double                  logS, eta_mu, eta_s, shape_eta;
+  umat                                  regMat, UpdateMe;
+  ucolvec   flatRegsIndx_Vec, UpdateIndx_Vec, numRegsVec;
   
   // .. Aux variables
   double                   logRosMinlogS, sum_gammas;
@@ -56,7 +59,10 @@ void Error_Gauss_c(string& ResultsFolder, mat &x_R, colvec &ParamVec_C)
   int                                        counter;
   // -----------------------------------------------------------------------------
   // -----------------------------------------------------------------------------
-  
+
+  // ZZ Profiler!!!!!
+//   ProfilerStart("../../ProfileGauss");
+
   // .. Read parameter file 
   paramFromVec_Gauss(ParamVec_C, samples, burnIn, thin, c, d, a, b, a_exp, b_exp, 
 		     sigmaS, sigmaMu, numExp, thinDataSample);
@@ -77,10 +83,11 @@ void Error_Gauss_c(string& ResultsFolder, mat &x_R, colvec &ParamVec_C)
   // .. No need to init with value, just size
   lambda_Exp.zeros(genes);
   
+  // .. Process Gamma_fixed matrix: Fix gammas, calc parameters
+  processFixedGammas(Gamma_fixed, num_fixedON,    free_gammas, UpdateMe, gamma_ij, 
+		      numRegsVec,      regMat, UpdateIndx_Vec, flatRegsIndx_Vec);
+
   counter        = 0;
-//   thinDataSample = 6;
-  free_gammas    = genes*(genes-1);
-  numDiag        = genes;
 
   // .. Init diagonal elements on
   gamma_ij.diag().ones();
@@ -100,16 +107,11 @@ void Error_Gauss_c(string& ResultsFolder, mat &x_R, colvec &ParamVec_C)
   Ytplus1      = Y.cols( 1,    time_m);
 
   
-  mu_mat     = repmat(mu, 1, time_m);
-    
-  // .. DEBUG
-  //   mat B_true;
-  //   B_true.load("../DATA/Networks/Lock.TrueNet2");
-  //   gamma_ij  = B_true!=0;
-  // .. DEBUG
-  
+  mu_mat  = repmat(mu, 1, time_m);
+  start_t = clock();
+
   // .. MCMC sampling loop
-  for(mcmc_iteration = 0; mcmc_iteration < samples; mcmc_iteration++)
+  for(mcmc_iteration = 1; mcmc_iteration < samples+1; mcmc_iteration++)
   {  
     if(mcmc_iteration%thinDataSample == 0)
     {
@@ -118,7 +120,7 @@ void Error_Gauss_c(string& ResultsFolder, mat &x_R, colvec &ParamVec_C)
     }
 
     // .. Update Rho
-    sum_gammas = accu(gamma_ij) - numDiag; 
+    sum_gammas = accu(gamma_ij) - num_fixedON; 
     ro         = Rf_rbeta(c + sum_gammas, d + free_gammas - sum_gammas);  
     // .. Rho dependant constant
     logRosMinlogS = log(ro/(1-ro)) - logS;
@@ -130,14 +132,16 @@ void Error_Gauss_c(string& ResultsFolder, mat &x_R, colvec &ParamVec_C)
 
     // .. Aux parameters
     mu_mat = repmat(mu, 1, time_m);
-    reCalcYstats(C, Cplus , Yt, Ytplus1, mu_mat);
+    reCalcYstats(C, Cplus, Yt, Ytplus1, mu_mat);
  
     // .. Sample from eta
     residuals   = B * Yt - Ytplus1 + mu_mat;
     updateEta(eta, residuals, shape_eta, b);    
         
     // .. Update Gibbs variables and regression coefficients
-    updateCoeffAndGibbsVars(B, gamma_ij, eta, C, Cplus,  precMatrix, logRosMinlogS, genes);
+    updateCoeffAndGibbsVars_reg(            B, gamma_ij,      eta,          C,  Cplus,  eta_s, 
+				logRosMinlogS,    genes, UpdateMe, numRegsVec, regMat);
+//     updateCoeffAndGibbsVars(B, gamma_ij, eta, C, Cplus,  precMatrix, logRosMinlogS, genes);
 
     if(mcmc_iteration%10 == 0)
       estimateTime_AllowCancel(informTimeFlag, mcmc_iteration, samples, start_t);
@@ -147,15 +151,12 @@ void Error_Gauss_c(string& ResultsFolder, mat &x_R, colvec &ParamVec_C)
     {
       Y_mean = Y_mean + Y;
       counter++;
-      // Timer? Estimated time?
-      // Residuals?
-      // Write variables to file
-      writeMatToFile(Bfile, B);     
+      writeMatToFile_withIndx(Bfile, B, flatRegsIndx_Vec);     
       writeToFileDouble(RhoFile, ro);      
       writeToFileVec(LambFile, eta);
       writeToFileVec(LambExpFile, lambda_Exp);
       writeToFileVec(MuFile, mu);
-      writeToFileInt(GammaFile, gamma_ij);      
+      writeToFileInt_withIndx(GammaFile, gamma_ij, UpdateIndx_Vec);      
     }    
   }
 
@@ -172,5 +173,9 @@ void Error_Gauss_c(string& ResultsFolder, mat &x_R, colvec &ParamVec_C)
   X_mean_fileName = ResultsFolder + "DataMean_standarised";  
   Xhat = Xhat/N_it;
   Xhat.save(X_mean_fileName, raw_ascii);
+  
+  // ZZ Profiler!!!!!
+//   ProfilerStop();
+
 }
 

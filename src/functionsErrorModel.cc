@@ -197,17 +197,20 @@ void update_Y(mat& Y, mat& Yt, mat& Ytplus1, const mat Xhat, const mat N_it,
 {
   mat         B_eta_B, inv_covMat, covMatY;
   colvec                    mu_Y, aux_mu_Y;
-  int t;
+  int                                    t;
+  vec                         diag_B_eta_B;
   
   // .. Aux vars 
-  B_eta_B    = trans(B)*diagmat(eta)*B;
-
+  B_eta_B      = trans(B)*diagmat(eta)*B;
+  diag_B_eta_B = B_eta_B.diag();
+  
   // .. Calculate distribution parameters
   inv_covMat = B_eta_B + diagmat(N_it.col(0)%lambda_Exp);
   covMatY    = inv(inv_covMat);
   aux_mu_Y   = trans(trans((Y.col(1) - mu)%eta) * B) + Xhat.col(0)%lambda_Exp;
   mu_Y       = covMatY*aux_mu_Y;
-  covMatY    = (covMatY + trans(covMatY))/2;
+  symmetriseMat(covMatY);  
+//     covMatY    = (covMatY + trans(covMatY))/2;
   
   // .. Sample
   Y.col(0)    = mvnrnd(mu_Y, covMatY);
@@ -215,11 +218,13 @@ void update_Y(mat& Y, mat& Yt, mat& Ytplus1, const mat Xhat, const mat N_it,
   for(t = 1; t < time_m; t++)
   {
     // .. Calculate distribution parameters
-    inv_covMat = B_eta_B + diagmat(eta + N_it.col(t)%lambda_Exp);
+    inv_covMat.diag() = diag_B_eta_B + eta + N_it.col(t)%lambda_Exp;
+//         inv_covMat = B_eta_B + diagmat(eta + N_it.col(t)%lambda_Exp);
     covMatY    = inv(inv_covMat);
     aux_mu_Y   = trans(trans((Y.col(t+1) - mu)%eta) * B) + (mu + B*Y.col(t-1))%eta + Xhat.col(t)%lambda_Exp;
     mu_Y       = covMatY*aux_mu_Y;
-    covMatY    = (covMatY + trans(covMatY))/2;
+    symmetriseMat(covMatY);  
+//     covMatY    = (covMatY + trans(covMatY))/2;
     // .. Sample  
     Y.col(t)   = mvnrnd(mu_Y, covMatY);
   }
@@ -230,7 +235,8 @@ void update_Y(mat& Y, mat& Yt, mat& Ytplus1, const mat Xhat, const mat N_it,
   covMatY    = inv(inv_covMat);
   aux_mu_Y   = (mu + B*Y.col(t-1))%eta + Xhat.col(t)%lambda_Exp;
   mu_Y       = covMatY*aux_mu_Y;
-  covMatY    = (covMatY + trans(covMatY))/2;
+    symmetriseMat(covMatY);  
+//     covMatY    = (covMatY + trans(covMatY))/2;
   // .. Sample  
   Y.col(time_m) = mvnrnd(mu_Y, covMatY);
 
@@ -391,18 +397,21 @@ void update_Y_tDist(mat& Y, mat& Yt, mat& Ytplus1, const cube& dataSets, const c
   mat         B_eta_B, inv_covMat, covMatY, weightedSum, sumWeights;
   colvec                                             mu_Y, aux_mu_Y;
   int                                                             t;
+  vec                                                  diag_B_eta_B;
    
   // .. Aux vars 
-  B_eta_B     = trans(B)*diagmat(eta)*B;
-  weightedSum = nan_cubeSum(cube(w_itr%dataSets));
-  sumWeights  = nan_cubeSum(w_itr);
+  B_eta_B      = trans(B)*diagmat(eta)*B;
+  weightedSum  = nan_cubeSum(cube(w_itr%dataSets));
+  sumWeights   = nan_cubeSum(w_itr);
+  diag_B_eta_B = B_eta_B.diag();
 
   // .. Calculate distribution parameters
   inv_covMat = B_eta_B + diagmat(sumWeights.col(0)%lambda_Exp);
   covMatY    = inv(inv_covMat);
   aux_mu_Y   = trans(trans((Y.col(1) - mu)%eta) * B) + weightedSum.col(0)%lambda_Exp;
   mu_Y       = covMatY*aux_mu_Y;
-  covMatY    = (covMatY + trans(covMatY))/2;
+  symmetriseMat(covMatY);  
+//     covMatY    = (covMatY + trans(covMatY))/2;
   
   // .. Sample
   Y.col(0)    = mvnrnd(mu_Y, covMatY);
@@ -410,11 +419,14 @@ void update_Y_tDist(mat& Y, mat& Yt, mat& Ytplus1, const cube& dataSets, const c
   for(t = 1; t < time_m; t++)
   {
     // .. Calculate distribution parameters
-    inv_covMat = B_eta_B + diagmat(eta + sumWeights.col(t)%lambda_Exp);
+    inv_covMat.diag() = diag_B_eta_B + eta + sumWeights.col(t)%lambda_Exp;
+
+//     inv_covMat = B_eta_B + diagmat(eta + sumWeights.col(t)%lambda_Exp);
     covMatY    = inv(inv_covMat);
     aux_mu_Y   = trans(trans((Y.col(t+1) - mu)%eta) * B) + (mu + B*Y.col(t-1))%eta + weightedSum.col(t)%lambda_Exp;
     mu_Y       = covMatY*aux_mu_Y;
-    covMatY    = (covMatY + trans(covMatY))/2;
+    symmetriseMat(covMatY);  
+//     covMatY    = (covMatY + trans(covMatY))/2;
     // .. Sample  
     Y.col(t)   = mvnrnd(mu_Y, covMatY);
   }
@@ -425,7 +437,8 @@ void update_Y_tDist(mat& Y, mat& Yt, mat& Ytplus1, const cube& dataSets, const c
   covMatY    = inv(inv_covMat);
   aux_mu_Y   = (mu + B*Y.col(t-1))%eta + weightedSum.col(t)%lambda_Exp;
   mu_Y       = covMatY*aux_mu_Y;
-  covMatY    = (covMatY + trans(covMatY))/2;
+  symmetriseMat(covMatY);  
+//     covMatY    = (covMatY + trans(covMatY))/2;
   // .. Sample  
   Y.col(time_m) = mvnrnd(mu_Y, covMatY);
 

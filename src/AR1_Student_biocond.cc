@@ -10,8 +10,10 @@ using namespace arma;
 #include <string>
 #include <cstdio>
 #include <ctime>
+// ZZ Profiler!!!!!
+// #include <google/profiler.h>
 
-void Error_Student_c(string& ResultsFolder, mat &x_R, colvec &ParamVec_C)
+void Error_Student_c(string& ResultsFolder, mat &x_R, colvec &ParamVec_C, mat &Gamma_fixed)
 {
   // Declare variables -----------------------------------------------------------
   // -----------------------------------------------------------------------------
@@ -21,7 +23,6 @@ void Error_Student_c(string& ResultsFolder, mat &x_R, colvec &ParamVec_C)
   double       a_deg, b_deg, c, d, a, b, a_exp, b_exp, sigmaS, sigmaMu;
   ucolvec                                            informTimeFlag(2);
   clock_t start_t;
-  start_t = clock();
   informTimeFlag.ones();
 
   // .. Loop vars
@@ -45,7 +46,7 @@ void Error_Student_c(string& ResultsFolder, mat &x_R, colvec &ParamVec_C)
   colvec                                           Xhat_sqr;
   
   // .. Aux parameters
-  int                        numDiag, p_sqr, free_gammas;
+  int           num_fixedON, numDiag, p_sqr, free_gammas;
   mat                                           Cplus, C;
   colvec   numSamples_i, shape_lamExp, mean_xt, mean_xt1;
   double                  logS, eta_mu, eta_s, shape_eta;
@@ -53,13 +54,17 @@ void Error_Student_c(string& ResultsFolder, mat &x_R, colvec &ParamVec_C)
 
   
   // .. Aux variables
-  double                   logRosMinlogS, sum_gammas;
-  mat      mu_mat, residuals, B_times_xt, precMatrix;
-  int                        counter_accept, counter;
-  ucolvec                                numAccepted;
+  double                       logRosMinlogS, sum_gammas;
+  mat          mu_mat, residuals, B_times_xt, precMatrix;
+  int                            counter_accept, counter;
+  ucolvec                                    numAccepted;
+  umat                                  regMat, UpdateMe;
+  ucolvec   flatRegsIndx_Vec, UpdateIndx_Vec, numRegsVec;
    
   // -----------------------------------------------------------------------------
   // -----------------------------------------------------------------------------
+  // ZZ Profiler!!!!!
+//   ProfilerStart("../../ProfileStudent");
 
   // .. Read parameter file 
   paramFromVec_Student(ParamVec_C, samples, burnIn, thin, c, d, a, b, a_exp, b_exp, 
@@ -86,11 +91,13 @@ void Error_Student_c(string& ResultsFolder, mat &x_R, colvec &ParamVec_C)
   // .. MCMC variables 
   initMCMCvars_Student(mu, ro, gamma_ij, B, eta, lambda_Exp, degFreedom, genes, time_m);  
 
+  // .. Process Gamma_fixed matrix: Fix gammas, calc parameters
+  processFixedGammas(Gamma_fixed, num_fixedON,    free_gammas, UpdateMe, gamma_ij, 
+		      numRegsVec,      regMat, UpdateIndx_Vec, flatRegsIndx_Vec);
+
   w_itr.zeros(genes, time_m+1, numExp);  
   counter        = 0;
   counter_accept = 0;
-  free_gammas    = genes*(genes-1);
-  numDiag        = genes;
   numAccepted    = zeros<ucolvec>(genes);
   numSamples_i   = sum(N_it,1);
 
@@ -119,19 +126,25 @@ void Error_Student_c(string& ResultsFolder, mat &x_R, colvec &ParamVec_C)
   Ytplus1      = Y.cols( 1,    time_m);
 
   mu_mat     = repmat(mu, 1, time_m);
+  
+  start_t = clock();
+
   // .. MCMC sampling loop
-  for(mcmc_iteration = 0; mcmc_iteration < samples; mcmc_iteration++)
+  for(mcmc_iteration = 1; mcmc_iteration < samples+1; mcmc_iteration++)
   {  
     if(mcmc_iteration%thinDataSample == 0)
     {
       update_weights_t(w_itr, YminX_sqr, Y, allData, degFreedom, lambda_Exp, numExp, time_m);
       update_LambdaExp_t(lambda_Exp, YminX_sqr,  w_itr, shape_lamExp, b_exp);
       update_MH_DegFreedom_t(degFreedom, numAccepted, a_deg, b_deg, w_itr, genes, numSamples_i, a_RW);   
+//       degFreedom << 13.266923 << 9.311586 << 4.491057 << 21.695926 << 5.877218 << endr;
       update_Y_tDist(Y, Yt, Ytplus1, allData, w_itr, lambda_Exp, eta, time_m, mu, B, genes);      
       counter_accept++;
     }
+//     update_MH_DegFreedom_t(degFreedom, numAccepted, a_deg, b_deg, w_itr, genes, numSamples_i, a_RW);   
+
     // .. Update Rho
-    sum_gammas = accu(gamma_ij) - numDiag; 
+    sum_gammas = accu(gamma_ij) - num_fixedON; 
     ro         = Rf_rbeta( c + sum_gammas, d + free_gammas - sum_gammas);  
     // .. Rho dependant constant
     logRosMinlogS = log(ro/(1-ro)) - logS;
@@ -150,7 +163,9 @@ void Error_Student_c(string& ResultsFolder, mat &x_R, colvec &ParamVec_C)
     updateEta(eta, residuals, shape_eta, b);    
         
     // .. Update Gibbs variables and regression coefficients
-    updateCoeffAndGibbsVars(B, gamma_ij, eta, C, Cplus,  precMatrix, logRosMinlogS, genes);
+    updateCoeffAndGibbsVars_reg(            B, gamma_ij,      eta,          C,  Cplus,  eta_s, 
+				logRosMinlogS,    genes, UpdateMe, numRegsVec, regMat);
+//     updateCoeffAndGibbsVars(B, gamma_ij, eta, C, Cplus,  precMatrix, logRosMinlogS, genes);
 
     if(mcmc_iteration%10 == 0)
       estimateTime_AllowCancel(informTimeFlag, mcmc_iteration, samples, start_t);
@@ -163,13 +178,13 @@ void Error_Student_c(string& ResultsFolder, mat &x_R, colvec &ParamVec_C)
       // Timer? Estimated time?
       // Residuals?
       // Write variables to file
-      writeMatToFile(Bfile, B);     
+      writeMatToFile_withIndx(Bfile, B, flatRegsIndx_Vec);     
       writeToFileDouble(RhoFile, ro);      
       writeToFileVec(LambFile, eta);
       writeToFileVec(LambExpFile, lambda_Exp);
       writeToFileVec(DegFreedomFile, degFreedom);      
       writeToFileVec(MuFile, mu);
-      writeToFileInt(GammaFile, gamma_ij);      
+      writeToFileInt_withIndx(GammaFile, gamma_ij, UpdateIndx_Vec);      
     }    
   }
   fclose(Bfile);
@@ -186,6 +201,10 @@ void Error_Student_c(string& ResultsFolder, mat &x_R, colvec &ParamVec_C)
   Y_mean.save(Y_mean_fileName, raw_ascii);
   NumAccepted_fileName = ResultsFolder + "acceptanceRatio";  
   colvec dub_numAccepted = conv_to<colvec>::from(numAccepted)/counter_accept;
-  dub_numAccepted.save(NumAccepted_fileName, raw_ascii);
+  dub_numAccepted.save(NumAccepted_fileName, raw_ascii);  
+  
+  // ZZ Profiler!!!!!
+//   ProfilerStop();
+
 }
 

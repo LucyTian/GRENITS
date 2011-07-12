@@ -29,6 +29,7 @@ are also plotted. For NonLinearNet, the posterior of the smoothness parameter is
 including posterior interaction strength for linear models. Can be imported with network analysis software 
 such as cytoscape.}
 \item{NetworkProbability_Matrix.txt}{Posterior probabilities for each network connection in matrix format.}
+\item{ProbNumParents.txt}{Posterior probabilities for number of regulators for each gene.}
 \item{InferredFunctionPlots.pdf}{(Only for nonLinearNet) Posterior distribution of predicted functions. 
 Data values are plotted as circles.}
 }
@@ -37,8 +38,9 @@ Data values are plotted as circles.}
 Morrissey, E.R., Juarez, M.A., Denby, K.J. and Burroughs, N.J. 2010. On reverse engineering of gene interaction 
 networks using time course data with repeated measurements.  Bioinformatics 2010; doi: 10.1093/bioinformatics/btq421
 
-Morrissey, E.R., Juarez, M.A., Denby, K.J. and Burroughs, N.J. 2011.  Inferring the topology of a non-linear sparse 
-gene regulatory network using fully Bayesian spline regression. (submitted)
+Morrissey, E.R., Juarez, M.A., Denby, K.J. and Burroughs, N.J. 2011 Inferring the time-invariant 
+topology of a nonlinear sparse gene regulatory network using fully Bayesian spline autoregression
+Biostatistics 2011; doi: 10.1093/biostatistics/kxr009
 }
 
 \seealso{

@@ -1,4 +1,5 @@
-NonLinearNet <- function(resultsFolder, timeSeries, ParamVec = NULL, chains = 2, user.seeds = NULL)
+NonLinearNet <- function(resultsFolder, timeSeries, ParamVec = NULL, chains = 2, user.seeds = NULL, 
+			  Regulators = NULL, fixMe = NULL)
 {
   # If no parameters given use default
   if (is.null(ParamVec)){ParamVec <- mcmc.defaultParams_nonLinear()}
@@ -19,6 +20,9 @@ NonLinearNet <- function(resultsFolder, timeSeries, ParamVec = NULL, chains = 2,
   # Write gene names to file
   .writeGeneNames(timeSeries, resultsFolder)
 
+  # If no fixed values given, fix diag on
+  fixMe <- .makeFixedGammasMat(dim(timeSeries)[1], Regulators, fixMe)
+
   if (!is.null(user.seeds)){chains <- length(user.seeds)}
   for (i in 1:chains)
   {
@@ -26,8 +30,9 @@ NonLinearNet <- function(resultsFolder, timeSeries, ParamVec = NULL, chains = 2,
     resultsFolder.i <- paste(resultsFolder, "/chain", i, "/", sep = "")
     dir.create(resultsFolder.i)
     message(paste("Started MCMC chain", i, " ============= "))
-    .Call("callSplines", timeSeries, resultsFolder.i, ParamVec, PACKAGE = "GRENITS")
+    .Call("callSplines", timeSeries, resultsFolder.i, ParamVec, fixMe, PACKAGE = "GRENITS")
     message(paste("MCMC chain", i, "finished!"))
+    write.table(fixMe, paste(resultsFolder.i, "/FixedGammaFile", sep=""), col.names = F, row.names = F)
   }  
 }
 

@@ -142,8 +142,9 @@ This file can be used for further analysis using for example cytoscape \cite{cyt
 Bioinformatics 2010.
 
 \bibitem{Morrissey11} Morrissey, E.R., Juarez, M.A., Denby, K.J. and Burroughs, N.J.
-{\sl Inferring the topology of a non-linear sparse gene regulatory network using fully Bayesian spline regression.}
-(submitted) 2011.
+{\sl Inferring the time-invariant topology of a nonlinear sparse gene regulatory network using fully 
+Bayesian spline autoregression}
+Biostatistics 2011.
 
 \bibitem{copasi} Hoops, S., Sahle, S., Gauges, R., Lee, C., Pahle, J., Simus, N., Singhal, M., Xu, L., Mendes, P. and Kummer, U.
 {\sl COPASI a COmplex PAthway SImulator.}

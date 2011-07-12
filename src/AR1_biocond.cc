@@ -11,13 +11,15 @@ using namespace arma;
 #include <string>
 #include <cstdio>
 #include <ctime>
+// ZZ Profiler!!!!!
+// #include <google/profiler.h>
 
 
-void AR1_c(string& ResultsFolder, mat &x_R, colvec &ParamVec_C)
+void AR1_c(string& ResultsFolder, mat &x_R, colvec &ParamVec_C, mat &Gamma_fixed)
 {
   // Declare variables -----------------------------------------------------------
   // -----------------------------------------------------------------------------
-  
+
   // .. General sampler parameters
   int                        samples, burnIn, thin; //, debugInt;
   double               c, d, a, b, sigmaS, sigmaMu;
@@ -43,14 +45,20 @@ void AR1_c(string& ResultsFolder, mat &x_R, colvec &ParamVec_C)
   int          time_m, genes, num_Conditions;  
   
   // .. Aux parameters
-  int            numDiag, p_sqr, free_gammas;
-  mat                    Cplus, cplus_aux, C;
-  colvec                   mean_xt1, mean_xt;
-  double      logS, eta_mu, eta_s, shape_eta;
-  
+  int           num_fixedON, numDiag, p_sqr, free_gammas;
+  mat                                Cplus, cplus_aux, C;
+  colvec                               mean_xt1, mean_xt;
+  double                  logS, eta_mu, eta_s, shape_eta;
+  umat                                  regMat, UpdateMe;
+  ucolvec   flatRegsIndx_Vec, UpdateIndx_Vec, numRegsVec;
+
   // .. Aux variables
   double                   logRosMinlogS, sum_gammas;
   mat      mu_mat, residuals, B_times_xt, precMatrix;
+  
+  // ZZ Profiler!!!!!
+//   ProfilerStart("../../ProfileAR1_3");
+
   
   // -----------------------------------------------------------------------------
   // -----------------------------------------------------------------------------
@@ -78,15 +86,13 @@ void AR1_c(string& ResultsFolder, mat &x_R, colvec &ParamVec_C)
   
   // .. MCMC variables 
   initMCMCvars_AR1(mu, ro, gamma_ij, B, eta, genes, num_Conditions);
-  
-  // .. Init diagonal elements on
-  gamma_ij.diag().ones();
-  B = B%gamma_ij;
 
-//   Load true coeff values   
-//  B.load("../../DATA/MNI_All2Perturbed.TrueNetwork");
-  free_gammas = genes*(genes-1);
-  numDiag     = genes;
+  // .. Process Gamma_fixed matrix: Fix gammas, calc parameters
+  processFixedGammas(Gamma_fixed, num_fixedON,    free_gammas, UpdateMe, gamma_ij, 
+		      numRegsVec,      regMat, UpdateIndx_Vec, flatRegsIndx_Vec);
+   
+  // .. Switch off appropriate coeffs
+  B = B%gamma_ij;
 
   // .. Auxiliary constants
   p_sqr       = genes*genes;
@@ -97,24 +103,19 @@ void AR1_c(string& ResultsFolder, mat &x_R, colvec &ParamVec_C)
   mean_xt     = mean(xt,1);
   logS        = log(sigmaS);
   precMatrix  = eta_s*eye<mat>(genes, genes);
-  mu_mat     = repmat(mu, 1, time_m);
+  mu_mat      = repmat(mu, 1, time_m);
   
   //  .. Calculate the Covariance (defined as sum(xt_i*xt_j))
   C         = xt * trans(xt);
   cplus_aux = xt_plus1 * trans(xt);
-
-//   cout << C;
-  // .. DEBUG
-  /*  mat B_true;
-  B_true.load("../DATA/Networks/Lock.TrueNet2");
-  gamma_ij  = B_true!=0;*/
-  // .. DEBUG
   
+  // .. Start timer to estimate run time
+  start_t = clock();
   // .. MCMC sampling loop
-  for(mcmc_iteration = 0; mcmc_iteration < samples; mcmc_iteration++)
+  for(mcmc_iteration = 1; mcmc_iteration < samples + 1; mcmc_iteration++)
   {  
     // .. Update Rho
-    sum_gammas = accu(gamma_ij) - numDiag; 
+    sum_gammas = accu(gamma_ij) - num_fixedON; 
     ro         = Rf_rbeta(c + sum_gammas, d + free_gammas - sum_gammas);  
     
     // .. Rho dependant constant
@@ -132,20 +133,26 @@ void AR1_c(string& ResultsFolder, mat &x_R, colvec &ParamVec_C)
     Cplus  = cplus_aux - mu_mat*trans(xt);
     
     // .. Update Gibbs variables and regression coefficients
-    updateCoeffAndGibbsVars(B, gamma_ij, eta, C, Cplus,  precMatrix, logRosMinlogS, genes);
+    updateCoeffAndGibbsVars_reg(            B, gamma_ij,      eta,          C,  Cplus,  eta_s, 
+				logRosMinlogS,    genes, UpdateMe, numRegsVec, regMat);
+//     updateCoeffAndGibbsVars(B, gamma_ij, eta, C, Cplus,  precMatrix, logRosMinlogS, genes);
 
+    
+    //     cout << mcmc_iteration;
     if(mcmc_iteration%10 == 0)
       estimateTime_AllowCancel(informTimeFlag, mcmc_iteration, samples, start_t);
-
+    
     if((mcmc_iteration>burnIn) & (mcmc_iteration%thin == 0))
     {
       // Residuals?
       // Write variables to file
-      writeMatToFile(Bfile, B);     
+//       writeMatToFile(Bfile, B);     
+      writeMatToFile_withIndx(Bfile, B, flatRegsIndx_Vec);     
       writeToFileDouble(RhoFile, ro);      
       writeToFileVec(LambFile, eta);
       writeToFileVec(MuFile, mu);
-      writeToFileInt(GammaFile, gamma_ij);      
+//       writeToFileInt(GammaFile, gamma_ij);      
+      writeToFileInt_withIndx(GammaFile, gamma_ij, UpdateIndx_Vec);      
     }    
   }    
   fclose(Bfile);
@@ -154,5 +161,9 @@ void AR1_c(string& ResultsFolder, mat &x_R, colvec &ParamVec_C)
   fclose(MuFile);
   fclose(GammaFile);
 /*  return 0;*/
+
+  // ZZ Profiler!!!!!
+//   ProfilerStop();
+
 }
 

@@ -28,8 +28,9 @@ Returns a single vector with the following elements (in this order):
 Morrissey, E.R., Juarez, M.A., Denby, K.J. and Burroughs, N.J. 2010. On reverse engineering of gene interaction 
 networks using time course data with repeated measurements.  Bioinformatics 2010; doi: 10.1093/bioinformatics/btq421
 
-Morrissey, E.R., Juarez, M.A., Denby, K.J. and Burroughs, N.J. 2011.  Inferring the topology of a non-linear sparse 
-gene regulatory network using fully Bayesian spline regression. (submitted)
+Morrissey, E.R., Juarez, M.A., Denby, K.J. and Burroughs, N.J. 2011 Inferring the time-invariant 
+topology of a nonlinear sparse gene regulatory network using fully Bayesian spline autoregression
+Biostatistics 2011; doi: 10.1093/biostatistics/kxr009
 }
 
 \seealso{

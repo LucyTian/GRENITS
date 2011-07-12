@@ -11,9 +11,8 @@ using namespace arma;
 #include "commonFunctions.h"
 #include "matrixManipulationFunctions.h"
 
-
-
 void initBasesOn(urowvec& bases_on, const umat& gamma_ij, int i, int M);
+void initBasesOn_rowvec(urowvec& bases_on, const urowvec& links_on, int i, int M);
 mat bspline_mat(const colvec& x, const double&xl, const double&xr, const int& ndx, const int& deg);
 void MHStep_Splines( urowvec& bases_on,   urowvec& gamma_Row,  double& logMVPDF_Old, int i, int j, 
 	    const mat& lambxCPlusS,   const rowvec& lambxCplusIdot, const colvec& sumLogs, int M);
@@ -152,6 +151,30 @@ void fillBzerosUseGamma(mat& B, const umat& gamma_ij, int M)
   }
 }
 
+void initBasesOn_rowvec(urowvec& bases_on, const urowvec& links_on, int i, int M)
+{
+  // .. Vars
+//   urowvec                  links_on;
+  int       G, start_indx, end_indx;
+  
+  // .. Vector to loop through
+//   links_on = gamma_ij.row(i);
+  G        = links_on.n_elem;
+  for(int indx = 0; indx < G; indx++)
+  {
+    start_indx = M*indx;
+    end_indx   = M*(indx+1)-1;
+    if(links_on[indx])
+    {
+      modifyBasesOnVector(bases_on, indx, M, 1);
+//       bases_on.cols(start_indx, end_indx).fill(1);
+    }else{
+      modifyBasesOnVector(bases_on, indx, M, 0);
+//       bases_on.cols(start_indx, end_indx).fill(0);      
+    }
+  }
+}
+
 void initBasesOn(urowvec& bases_on, const umat& gamma_ij, int i, int M)
 {
   // .. Vars
@@ -248,6 +271,53 @@ mat priprec(int M)
   return(P);
 }
 
+void updateTaus_reg(mat& tau_ij, colvec& logRosMinlogS, const mat& smallPriorMat, urowvec& links_on, const mat& B, 
+		double shape_tau_self, double shape_tau, int M, double logRoDivOneMinRo, double truncate_me, double a_pareto_inv,
+		double m_minus2_div2, int i, double tau0, uvec regsVec)
+{
+  // .. Vars 
+  colvec                                            logS(regsVec.n_elem);
+  double      uni_rnd, rate_tau, scale_tau, b_Prior_prec_b, shape_tau_me;
+//   urowvec                                                       links_on;
+  rowvec                                                    b_ij(M), b_i;
+  int                                                          num_genes;
+  unsigned int                                                   indxReg;
+  double                                                         new_tau;
+  num_genes = (int) regsVec.n_elem;
+//   links_on  = gamma_ij.row(i);
+  b_i       = B.row(i);
+  // Resize to number of regulators in this regression
+  logRosMinlogS.set_size(num_genes);
+  // .. With i fixed loop over j and sample from Tau_ij
+  for(int j_tau = 0; j_tau < num_genes; j_tau++)
+  {      
+    indxReg = regsVec[j_tau];
+    // .. Set shape parameter to one of two (self or not)
+    if(i == indxReg)
+    {
+      shape_tau_me = shape_tau_self;
+    }else{
+      shape_tau_me = shape_tau;
+    }
+    // .. If connection is on: sample as usual. If not sample from prior
+    if(links_on[j_tau])
+    {
+      b_ij               = b_i.cols(M * indxReg, M  * (indxReg + 1) - 1);
+      b_Prior_prec_b     = as_scalar(b_ij * smallPriorMat * trans(b_ij));
+      rate_tau           = 0.5 * b_Prior_prec_b;
+      scale_tau          = 1/rate_tau;
+      new_tau            = rTruncGamma(tau_ij(i, indxReg), shape_tau_me, scale_tau, truncate_me);
+      tau_ij(i, indxReg) = new_tau;
+    }else{
+      uni_rnd            = unif_rand();
+      new_tau            = truncate_me*pow(uni_rnd, a_pareto_inv);
+      tau_ij(i, indxReg) = new_tau;
+    }
+    logS(j_tau) = -log(tau0 * pow(new_tau, m_minus2_div2));
+  }      
+  logRosMinlogS  = logRoDivOneMinRo - logS;       
+}
+
 void updateTaus(mat& tau_ij, colvec& logRosMinlogS, const mat& smallPriorMat, const umat& gamma_ij, const mat& B, 
 		double shape_tau_self, double shape_tau, int M, double logRoDivOneMinRo, double truncate_me, double a_pareto_inv,
 		double m_minus2_div2, int i, double tau0)
@@ -283,12 +353,11 @@ void updateTaus(mat& tau_ij, colvec& logRosMinlogS, const mat& smallPriorMat, co
       uni_rnd = unif_rand();
       tau_ij(i, j_tau) = truncate_me*pow(uni_rnd, a_pareto_inv);
     }
-    // DEBUG!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-//     tau_ij(i,j_tau) = 500;
     logS(j_tau) = -log(tau0 * pow(tau_ij(i,j_tau), m_minus2_div2));
   }      
   logRosMinlogS  = logRoDivOneMinRo - logS;       
 }
+
 
 // .. Sample from a truncated gamma distribution
 double rTruncGamma(double oldVal, double a_shape, double b_scale, double truncate_me)
@@ -327,6 +396,7 @@ void priorMultiTau(mat& priorWithTau, const mat& smallPriorMat, const rowvec& ta
   // .. Vars
   int   start_indx, end_indx;  
   mat                  subMe;
+
   // .. Fill mat
   for(int block_j = 0; block_j < genes;  block_j++) 
   { 
@@ -337,7 +407,7 @@ void priorMultiTau(mat& priorWithTau, const mat& smallPriorMat, const rowvec& ta
     subMe      = smallPriorMat*tau_i[block_j];
     // .. Incorporate tau0
     subMe(0,0) = subMe(0,0) + tau0;
-    subMe(1,1) = subMe(1,1) + tau0;
+    subMe(1,1) = subMe(1,1) + tau0;  
     // .. Substitute
     priorWithTau.submat(start_indx, start_indx, end_indx, end_indx) = subMe; 
   }    
@@ -351,7 +421,7 @@ void updateGammaAndB_row_i(mat& B,   umat& gamma_ij, const mat& FullprecB, const
   urowvec     bases_on(M*genes), links_on;
   double                     logMVPDF_Old;
   int                                   j;
-  ucolvec                   seq_rnd(genes);
+  ucolvec                  seq_rnd(genes);
 
   
   // .. Links in row i that are on and corresponding bases
@@ -381,10 +451,57 @@ void updateGammaAndB_row_i(mat& B,   umat& gamma_ij, const mat& FullprecB, const
   updateCoefficients_splines(B, i, bases_on, FullprecB, meanBNoPrec);
 }
 
+// ..   Sample from  Gammas      
+void updateGammaAndB_row_i_reg(mat& B,   umat& gamma_ij, const mat& FullprecB, const rowvec& meanBNoPrec, 
+			     const colvec & logRosMinlogS, int genes, int M, int i, urowvec &links_on,
+			     const ucolvec &regsBasesVec,  const urowvec &updateVec, const ucolvec &numRegsVec,
+			     const uvec &regsVec)
+{
+  // .. Vars
+  urowvec               bases_on(M*numRegsVec(i));
+  double                             logMVPDF_Old;
+  int                                           j;
+  ucolvec                                 seq_rnd;
+
+  
+  // .. Links in row i that are on and corresponding bases
+//   links_on    = gamma_ij.row(i);
+//   initBasesOn(bases_on, gamma_ij, i, M); 
+  initBasesOn_rowvec(bases_on, links_on, i, M); 
+  calc_logMVPDF_withBases(logMVPDF_Old, FullprecB, meanBNoPrec, i, bases_on);      
+
+  // .. Random permutation of update index
+  seq_rnd.set_size(numRegsVec(i));
+  random_intSequence(seq_rnd);
+
+  // .. Loop over elements of row i and sample from gamma
+  for(int j_loop = 0; j_loop < seq_rnd.n_elem; j_loop++)
+  {
+    // .. Get permuted index
+    j = seq_rnd[j_loop];
+    // .. Update non fixed links (self interaction is by default fixed)
+    if (updateVec(j))
+    {
+      MHStep_Splines(bases_on, links_on, logMVPDF_Old, i, j, FullprecB, meanBNoPrec, logRosMinlogS, M);
+    }
+  }      
+/*  
+  // .. Update gamma matrix with new row
+  gamma_ij.row(i)= links_on; 
+*/
+  // .. Update gamma matrix with new row
+  fillMatRowWithIndx_u(gamma_ij, links_on, i, regsVec);
+
+  // .. Update B !!! CODE THIS!!!
+//   updateCoefficients_splines_reg(B, i, bases_on, FullprecB, meanBNoPrec, regsVec);
+  // .. Update coefficients
+  updateCoefficients_reg(B, i, bases_on, FullprecB, meanBNoPrec, regsBasesVec);      
+
+}
 
 
 // .. Sample from mu  -----------------------------------------------
-void updateMu_Splines(colvec& mu, const colvec& eta, const double& eta_mu, const mat& B, const colvec& mean_xt1, const rowvec& xhat_1, int time_m, int i)
+void updateMu_Splines(colvec& mu, const colvec& eta, const double& eta_mu, const colvec& mean_xt1, const rowvec& xhat_1, int time_m, int i)
 {
     // Declare vars
     double aux_denominator, aux_muVar, mu_sd, mu_mean;
@@ -421,7 +538,8 @@ void updateCoefficients_splines(                mat& B,              const int& 
       covarianceMatrixB = inv(lambxCPlusSReduced);
       
       // .. Correct precision => symmetry problem
-      covarianceMatrixB = (covarianceMatrixB + trans(covarianceMatrixB))/2;
+//       covarianceMatrixB = (covarianceMatrixB + trans(covarianceMatrixB))/2;
+      symmetriseMat(covarianceMatrixB);  
       // .. Update B for links that are ON
       aux_mu_B  = covarianceMatrixB*trans(lambxCplusIdotReduced);
       b_new     = mvnrnd(aux_mu_B, covarianceMatrixB);
@@ -549,5 +667,60 @@ void calc_logMVPDF_withBases(double& logMVPDF, const mat& lambxCPlusS , const ro
   }
  
 }
+
+void makeParametersSplinesRegression_i(   mat &FullprecB, rowvec &meanBNoPrec,  urowvec &updateVec,   
+			            const umat &updateMe,    ucolvec &regsVec,               int i,           
+				            const mat &C,          mat &Y_red,   const colvec &eta,   
+			              mat &smallPriorMat,         mat& tau_ij, ucolvec &numRegsVec, 
+				   ucolvec &regsBasesVec,             vec &mu,         double tau0,
+				                   int M,              mat &Y,      mat  &xt_plus1)
+{
+  
+  mat       priorMatB;
+  rowvec        tau_i;
+  
+  // .. Reduced covariance mat
+  subMatFromIndices(FullprecB, C, regsBasesVec);
+
+  // .. precision mat vals
+  subVectorFromIndx_MatRow(tau_i, tau_ij, i, regsVec);
+  
+  priorMatB.zeros(M*numRegsVec(i), M*numRegsVec(i));
+  priorMultiTau(priorMatB, smallPriorMat, tau_i, tau0, M, tau_i.n_elem);
+  // .. Calc full prec B
+  FullprecB = eta(i) * FullprecB + priorMatB;
+
+  // .. Get reduced Y
+  subMatFrom_ColIndices(Y_red, Y, regsBasesVec);
+
+  // .. Calc meanBNoPrec
+  meanBNoPrec = eta(i)*(xt_plus1.row(i)-mu(i))*Y_red;
+  
+  // .. Get update Vec 
+  subVectorFromIndx_MatRow_u(updateVec, updateMe, i, regsVec);    
+}
+
+
+void fixedBasesFromFixedRegs(umat &fixedBases, umat &regMat, ucolvec &numRegs, int M)
+{
+  unsigned int row_i, col_j, base_k, genes, indxReg_i;
+  genes = regMat.n_cols;
+  fixedBases.zeros(genes*M, genes);
+  for(col_j = 0; col_j != genes; col_j++)
+  {
+    for(row_i = 0; row_i != numRegs[col_j]; row_i++)
+    {
+      indxReg_i = regMat(row_i, col_j);
+      for(base_k = 0; base_k != M; base_k++)
+      {
+	fixedBases(row_i*M + base_k, col_j) = indxReg_i*M + base_k;
+      }
+    }    
+  }    
+}
+
+
+
+
 
 

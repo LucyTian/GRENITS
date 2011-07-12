@@ -10,8 +10,10 @@ using namespace arma;
 #include <string>
 #include <cstdio>
 #include <ctime>
+// ZZ Profiler!!!!!
+// #include <google/profiler.h>
 
-void PSplines_c(string& ResultsFolder, mat &x_R, colvec &ParamVec_C)
+void PSplines_c(string& ResultsFolder, mat &x_R, colvec &ParamVec_C, mat &Gamma_fixed)
 {
   // Declare variables -----------------------------------------------------------
   // -----------------------------------------------------------------------------
@@ -21,7 +23,6 @@ void PSplines_c(string& ResultsFolder, mat &x_R, colvec &ParamVec_C)
   double        c, d, a, b, truncate_me, tau0, sigmaMu, a_pareto;
   ucolvec                                      informTimeFlag(2);
   clock_t start_t;
-  start_t = clock();
   informTimeFlag.ones();
 
   // .. Loop vars
@@ -41,25 +42,35 @@ void PSplines_c(string& ResultsFolder, mat &x_R, colvec &ParamVec_C)
   int          time_m, genes, num_Conditions;  
   
   // .. Aux parameters
-  int                nodesSpline, degreeSpline, numDiag, p_sqr, free_gammas;
-  double                                                      m_minus2_div2;
-  mat                         smallPriorMat, xhat_0, Y, Cplus, cplus_aux, C;
-  colvec                                                  mean_xt1, mean_xt;
-  rowvec                                                             xhat_1;
-  double         shape_tau, shape_tau_self, a_pareto_inv, eta_mu, shape_eta;
-
+  int                 num_fixedON, nodesSpline, degreeSpline, numDiag, free_gammas;
+  double                                                             m_minus2_div2;
+  mat                                smallPriorMat, xhat_0, Y, Cplus, cplus_aux, C;
+  colvec                                                         mean_xt1, mean_xt;
+  rowvec                                                                    xhat_1;
+  double                shape_tau, shape_tau_self, a_pareto_inv, eta_mu, shape_eta;
+  umat                                               regMatBases, regMat, UpdateMe;
+  ucolvec      regsBasesVec, regsVec, flatRegsIndx_Vec, UpdateIndx_Vec, numRegsVec;
+  mat                                                                        Y_red;
+//   uvec                                                                    updateMe;
+  urowvec                                                                updateVec;
+  
   // .. Aux variables
   double                                   logRoDivOneMinRo, sum_gammas;
   mat                YB_full, mu_mat, residuals, B_times_xt, precMatrix;
   mat       full_F_sqr ,priorMatB, FullprecB, all_f, indiv_f, all_f_sqr;
-  ucolvec                                                      bases_on;
+//   ucolvec                                                      bases_on;
   colvec                                        YB, logRosMinlogS, logS;
-  rowvec                                             tau_i, meanBNoPrec;
+  rowvec                                        B_i, tau_i, meanBNoPrec;
   umat                                                     mapGammaBeta;
   int                                                           counter;
+  urowvec                                                      links_on;
 
   // -----------------------------------------------------------------------------
   // -----------------------------------------------------------------------------
+  
+  // ZZ Profiler!!!!!
+//   ProfilerStart("../../ProfileSplines");
+
   
   // .. Read parameter file 
   paramFromVec_Splines(ParamVec_C, samples, burnIn, thin, c, d, a, b, 
@@ -94,26 +105,27 @@ void PSplines_c(string& ResultsFolder, mat &x_R, colvec &ParamVec_C)
   // .. MCMC variables 
   initMCMCvars_Splines(mu, ro, gamma_ij, B, eta, genes, num_Conditions, tau_ij, M);
 
-  // .. Init diagonal elements on
-  gamma_ij.diag().ones();
-  
+  // .. Process Gamma_fixed matrix: Fix gammas, calc parameters
+  processFixedGammas(Gamma_fixed, num_fixedON,    free_gammas, UpdateMe, gamma_ij, 
+		      numRegsVec,      regMat, UpdateIndx_Vec, flatRegsIndx_Vec);
+
+//   UpdateMe.print("UpdateMe");
+  fixedBasesFromFixedRegs(regMatBases, regMat, numRegsVec, M);
+
   // .. Init aux variables
-  bases_on = zeros<ucolvec>(genes*M);
+//   bases_on = zeros<ucolvec>(genes*M);
   
   // .. Create mapGammaBeta matrix, mapping gamma index to B indeces
   fillBzerosUseGamma(B, gamma_ij, M);
    
   // .. Auxiliary constants
-  p_sqr          = genes*genes;
   shape_eta      = a + 0.5 * time_m;
   eta_mu         = pow(sigmaMu,-2);
   mean_xt1       = mean(xt_plus1,1);
   m_minus2_div2  = (M-2)/2.0;
   a_pareto_inv   = 1.0/a_pareto;
   shape_tau      = m_minus2_div2 + a_pareto;
-  shape_tau_self = m_minus2_div2 + 3.*a_pareto;
-  free_gammas    = genes*(genes-1);
-  numDiag        = genes;
+  shape_tau_self = m_minus2_div2 + 3.0*a_pareto;
   
   // .. x hats
   YB_full = Y*trans(B);
@@ -136,21 +148,17 @@ void PSplines_c(string& ResultsFolder, mat &x_R, colvec &ParamVec_C)
   full_F_sqr.zeros(time_m, genes);
   all_f.zeros(time_m, genes*genes);
   all_f_sqr.zeros(time_m, genes*genes);
-  // DEBUG!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-/*  gamma_ij.load("../../../DATA/Networks/Lock.TrueNet2");
-  gamma_ij.diag().ones();*/
-//   gamma_ij.ones();
-  // DEBUG!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  
+  start_t = clock();
 
   // .. MCMC sampling loop
-  for(mcmc_iteration = 0; mcmc_iteration < samples; mcmc_iteration++)
+  for(mcmc_iteration = 1; mcmc_iteration < samples+1; mcmc_iteration++)
   {  
 
     // .. Update Rho
-    sum_gammas = accu(gamma_ij) - numDiag; 
+    sum_gammas = accu(gamma_ij) - num_fixedON; 
     ro         = Rf_rbeta( c + sum_gammas, d + free_gammas - sum_gammas);  
-      // DEBUG!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-//     ro =0.45;
+
     // .. Rho dependant constant
     logRoDivOneMinRo = log(ro/(1-ro));
 
@@ -158,35 +166,42 @@ void PSplines_c(string& ResultsFolder, mat &x_R, colvec &ParamVec_C)
     mu_mat = repmat(mu, 1, time_m);
     residuals = xt_plus1 - trans(xhat_0) - mu_mat;      
     updateEta(eta, residuals, shape_eta, b); 
-    // DEBUG!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-/*    
-    eta.fill(1000);
-    mu.zeros();
-*/
+
     // .. Loop through genes
     for(int i = 0; i < genes; i++)
-    {
+    {      
+      // Get vector with indices of regulators
+      getRegsVec(           regsVec, numRegsVec,      regMat, i);
+      getRegsVecBases( regsBasesVec, numRegsVec, regMatBases, i, M);
+      
+     // .. Get links_on in reduced size
+      subVectorFromIndx_MatRow_u(links_on, gamma_ij, i, regsVec);      
+      
       // .. Sample from taus
-      updateTaus(tau_ij, logRosMinlogS, smallPriorMat, gamma_ij, B, shape_tau_self, shape_tau, M, 
-		 logRoDivOneMinRo, truncate_me, a_pareto_inv, m_minus2_div2, i, tau0);    
-      // .. Build full B prior mat
-      tau_i = tau_ij.row(i);
-      priorMultiTau(priorMatB, smallPriorMat, tau_i, tau0, M, genes);
-      // .. Calculate constants for gene i
-      FullprecB   = priorMatB + eta(i)*C;            
-      meanBNoPrec = eta(i)*(xt_plus1.row(i)-mu(i))*Y;
+      updateTaus_reg(tau_ij, logRosMinlogS, smallPriorMat, links_on, B, shape_tau_self, shape_tau, M, 
+		 logRoDivOneMinRo, truncate_me, a_pareto_inv, m_minus2_div2, i, tau0, regsVec);   
+      
+
+      makeParametersSplinesRegression_i(FullprecB, meanBNoPrec, updateVec,       UpdateMe, regsVec,          i,           
+				                C,       Y_red,       eta,  smallPriorMat,  tau_ij, numRegsVec, 
+				     regsBasesVec,          mu,      tau0,              M,       Y,   xt_plus1);
+     
      
       // .. Update Gammas and Bs for row i 
-      updateGammaAndB_row_i(B, gamma_ij, FullprecB, meanBNoPrec, logRosMinlogS, genes, M, i);
-      
+      updateGammaAndB_row_i_reg(            B,     gamma_ij,  FullprecB, meanBNoPrec, logRosMinlogS, genes, M, i, 
+				     links_on, regsBasesVec,  updateVec,  numRegsVec,       regsVec);
+       
+     
       // .. Correct identifiability mu, sum(YB)
       // *******************************************************************
-      YB            = Y * trans(B.row(i));
+      subVectorFromIndx_MatRow(B_i, B, i, regsBasesVec);      
+      YB            = Y_red * trans(B_i);
       xhat_1(i)     = mean(YB);      
       xhat_0.col(i) = YB - xhat_1(i);    
       
+      
       //.. Update mu(i)
-      updateMu_Splines(mu, eta, eta_mu, B, mean_xt1, xhat_1, time_m, i);
+      updateMu_Splines(mu, eta, eta_mu, mean_xt1, xhat_1, time_m, i);
 
       // .. Correct identifiability mu, sum(YB)
       // *******************************************************************
@@ -198,14 +213,12 @@ void PSplines_c(string& ResultsFolder, mat &x_R, colvec &ParamVec_C)
     
     if((mcmc_iteration>burnIn) & (mcmc_iteration%thin == 0))
     {     
-      // Timer? Estimated time?
-      // Residuals?
       // Write variables to file
-      writeMatToFile(TauFile, tau_ij);     
+      writeMatToFile_withIndx(TauFile, tau_ij, flatRegsIndx_Vec);     
       writeToFileDouble(RhoFile, ro);      
       writeToFileVec(LambdaFile, eta);
       writeToFileVec(MuFile, mu);
-      writeToFileInt(GammaFile, gamma_ij);   
+      writeToFileInt_withIndx(GammaFile, gamma_ij, UpdateIndx_Vec);      
       // .. Calculate value of functions
       calcIndivF(all_f, all_f_sqr, full_F_sqr, Y, B, genes, M, time_m);
       counter++;
@@ -226,6 +239,10 @@ void PSplines_c(string& ResultsFolder, mat &x_R, colvec &ParamVec_C)
   fclose(LambdaFile);
   fclose(MuFile);
   fclose(GammaFile);
-//   return 0;
+
+  
+//   ZZ Profiler!!!!!
+//   ProfilerStop();
+
 }
 

@@ -6,7 +6,8 @@ Run Bayesian inference of linear interaction network on data with replicates. Th
 to follow a Student distribution. The function generates MCMC chains that can later be analysed.
 }
 \usage{
-ReplicatesNet_student(resultsFolder, timeSeries, numReps, ParamVec = NULL, chains = 2, user.seeds = NULL)
+ReplicatesNet_student(     resultsFolder,   timeSeries, numReps, ParamVec = NULL, chains = 2, user.seeds = NULL,
+		       Regulators = NULL, fixMe = NULL)
 }
 \arguments{
 \item{resultsFolder}{Name of output folder. The folder will be created and the output of the run 
@@ -21,6 +22,12 @@ default parameters will be used. The vector contains parameters associated to th
 well as MCMC run length. (See mcmc.defaultParams_student)}
 \item{chains}{Number of MCMC chains to run.}
 \item{user.seeds}{An optional vector with seeds to use for MCMC chains.}
+\item{Regulators}{An optional vector with the indices of which genes are regulators. If
+provided, all non-regulator genes will not be allowed to regulate.}
+\item{fixMe}{An optional matrix of size genes x genes, where columns represent regulators and 
+rows regulated genes. The matrix informs the model of network connections known to be present/absent.
+For each position use either 0 (no regulation, fix off), 1 (known regulatory interaction, fix on) 
+or NaN (no information, do not fix).}
 }
 \details{
 The order in which the replicates are placed do not affect the output. In other words swapping timepoint

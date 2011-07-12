@@ -23,7 +23,6 @@ extern "C" void arma_fortran(dtrtrs)(char *uplo, char *trans, char *diag, blas_i
 void solve_Tri_LAPACK(mat& R, colvec& v);
 void estimateRemainingTime(double& percent_done, double& time_left, int length, 
 			   int iteration_k, clock_t& start);
-
 umat is_NaN_mat(mat &A);
 
 			   
@@ -95,20 +94,40 @@ mat loadAndScaleData(const char* filename)
 //   logMVPDF  = 2*log(prod(invR.diag())) + dot(vecDotMat,vecDotMat);
 // }
 
+// // .. log of multivariate normal pdf as used in MH update
+// void MHlogMVPDF(double& logMVPDF, const mat& Sigma, const rowvec& Mu)
+// {
+//   // .. Vars
+//   mat                 invR, R;
+//   colvec     vecDotMat, MuAux;
+//   
+//   //.. Use choleski to speed up
+//   R         = chol(Sigma);
+//   
+//   MuAux = trans(Mu);
+// //   solve(vecDotMat, trans(R), MuAux);
+//   solve_Tri_LAPACK(R, MuAux);
+//   logMVPDF  = -2*log(prod(R.diag())) + dot(MuAux,MuAux);
+// }
+
 // .. log of multivariate normal pdf as used in MH update
 void MHlogMVPDF(double& logMVPDF, const mat& Sigma, const rowvec& Mu)
 {
   // .. Vars
-  mat                 invR, R;
-  colvec     vecDotMat, MuAux;
-  
+  mat                     invR, R;
+  colvec         vecDotMat, MuAux;
+  double   proDiagonal, modulusMu;
   //.. Use choleski to speed up
   R         = chol(Sigma);
   
   MuAux = trans(Mu);
-//   solve(vecDotMat, trans(R), MuAux);
+
   solve_Tri_LAPACK(R, MuAux);
-  logMVPDF  = -2*log(prod(R.diag())) + dot(MuAux,MuAux);
+
+  prod_Diag(proDiagonal, R);
+  modulus_ColVec(modulusMu, MuAux);
+  logMVPDF  = -2*log(proDiagonal) + modulusMu;
+
 }
 
 void solve_Tri_LAPACK(mat& R, colvec& v)
@@ -154,6 +173,18 @@ void writeMatToFile(FILE* BFile, const mat & B)
   fprintf(BFile, "%4.3f\n", *b);
 }
 
+void writeMatToFile_withIndx(FILE* BFile, const mat & B, uvec &UpdateIndx_Vec)
+{
+  uvec::iterator a = UpdateIndx_Vec.begin();
+  uvec::iterator b = UpdateIndx_Vec.end();
+  b--;  
+  for(uvec::const_iterator i = a; i != b; ++i)
+  {
+      fprintf(BFile, "%4.3f,", B[*i]);
+  }
+  fprintf(BFile, "%4.3f\n", B[*b]);
+}
+
 void writeToFileDouble(FILE* RhoFile, const double ro)
 {
     fprintf(RhoFile, "%4.3f\n", ro);
@@ -183,6 +214,19 @@ void writeToFileInt(FILE* GammaFile, const umat& gamma_ij)
   fprintf(GammaFile, "%d\n", *b);
 }
 
+void writeToFileInt_withIndx(FILE* GammaFile, const umat& gamma_ij, uvec &UpdateIndx_Vec)
+{
+  uvec::iterator a = UpdateIndx_Vec.begin();
+  uvec::iterator b = UpdateIndx_Vec.end();
+  b--;  
+  for(umat::const_iterator i = a; i != b; ++i)
+  {
+    fprintf(GammaFile, "%d,", gamma_ij[*i]);
+  }
+  fprintf(GammaFile, "%d\n", gamma_ij[*b]);
+}
+
+
 double min_two(double a, double b)
 {
   if (a<b)
@@ -203,10 +247,17 @@ colvec mvnrnd(colvec &Mu, mat& Sigma)
   // Sample from unit gaussians  
   for(loop_var = 0; loop_var < Mu.n_elem;loop_var++)
   {    
-    unit_gaussians(loop_var) = norm_rand();    
+    unit_gaussians[loop_var] = norm_rand();    
   }  
   
   chol_sigma = chol(Sigma);
+  // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!Z|ZZZZZZZZZZZZZZZZZZZZZZ
+/*  if(chol_sigma.n_cols==0)
+  {
+    cout << "Size zero" <<endl;
+    cout << "Num cols Sigma" << Sigma.n_cols <<endl;
+//     Sigma.print("SigmaMat");
+  }*/
   output = Mu + trans(unit_gaussians * chol_sigma) ;
   return(output);  
 }
@@ -258,7 +309,7 @@ void estimateTime_AllowCancel(ucolvec& informTimeFlag_vec, int iteration_k, int 
 
 
 void estimateRemainingTime(double& percent_done, double& time_left, int length, 
-			   int iteration_k, clock_t& start)
+			        int iteration_k,    clock_t& start)
 {
   double so_far, percent_speed, fraction_done;
   double so_far_sec;
@@ -285,27 +336,58 @@ void estimateRemainingTime(double& percent_done, double& time_left, int length,
     time_left = -1.;
   }
 }
-
-void processFixedGammas(mat &Gamma_fixed, int &num_fixedON, int &free_gammas, umat &UpdateMe, umat &gamma_ij)
+// .. Take update information matrix. Elements are 0/1 for fixed off/on 
+// .. and NaN for updatable link.  
+void processFixedGammas(mat &Gamma_fixed,     int &num_fixedON,  int &free_gammas,  umat &UpdateMe, 
+			  umat &gamma_ij,  ucolvec &numRegsVec,      umat &regIndx_Mat, 
+			  uvec &UpdateIndx_Vec, uvec &flatRegsIndx_Vec)
 {
+  int indx_RegIndxMat;
+  regIndx_Mat.zeros(Gamma_fixed.n_cols, Gamma_fixed.n_cols);
+  umat   regMat;
   UpdateMe    = is_NaN_mat(Gamma_fixed);
+  // Init regMat (position of regulators) as UpdateMe
+  regMat      = UpdateMe;
   free_gammas = accu(UpdateMe);
-  Gamma_fixed.save("FixedGammaFile", raw_ascii); 
+//   Gamma_fixed.save("FixedGammaFile", raw_ascii); 
   num_fixedON = 0;
   // .. Place fixed values in gamma_ij and calculate how many are fixed on
   mat::iterator                         gamma_fixed_iter;
   mat::iterator        first_elem =  Gamma_fixed.begin();
   mat::iterator         last_elem =    Gamma_fixed.end();
   umat::iterator   iter_gamma_var =     gamma_ij.begin();
+  umat::iterator      regMat_iter =       regMat.begin();
   
-  for( gamma_fixed_iter = first_elem; gamma_fixed_iter != last_elem; gamma_fixed_iter++, iter_gamma_var++)
+  for( gamma_fixed_iter = first_elem; gamma_fixed_iter != last_elem; 
+        gamma_fixed_iter++, iter_gamma_var++, regMat_iter++)
   {
     if(!isnan(*gamma_fixed_iter))
     {
 	*iter_gamma_var = *gamma_fixed_iter;
 	num_fixedON += *gamma_fixed_iter;
+	// If it is fixed on it's a regulator
+	if(*gamma_fixed_iter==1)
+	  *regMat_iter = 1;
     }
   } 
+  // .. Number of regulators for each regression
+  numRegsVec = sum(regMat,1);
+  
+  // .. Make Reg indx mat (fill with zeros place indices in col wise order)
+  for(int i = 0; i!=Gamma_fixed.n_cols;i++)
+  {
+    indx_RegIndxMat=0;
+    for(int j = 0; j!=Gamma_fixed.n_cols;j++)
+    {
+      if(regMat(i,j))
+      {  
+	regIndx_Mat(indx_RegIndxMat,i) = j;
+	indx_RegIndxMat++;
+      }
+    }
+  }
+  UpdateIndx_Vec   = find(UpdateMe);
+  flatRegsIndx_Vec = find(regMat); 
 }
 
 umat is_NaN_mat(mat &A)
@@ -325,6 +407,110 @@ umat is_NaN_mat(mat &A)
     }
   } 
   return(isNAN_vals);
+}
+
+void getRegsVec(ucolvec &regsVec, ucolvec &numRegs, umat &regMat, unsigned int i)
+{  
+   unsigned int start_pos;
+   // Calc flat mat index for col i row 0
+   start_pos = i*regMat.n_rows;
+   regsVec.set_size(numRegs(i));
+   for(unsigned int loop_j = 0; loop_j< numRegs(i); loop_j++)
+    regsVec[loop_j] = regMat[start_pos + loop_j];  
+}
+
+
+void getRegsVecBases(ucolvec &regsVec, ucolvec &numRegs, umat &regMat, unsigned int i, int M)
+{  
+   unsigned int start_pos;
+   // Calc flat mat index for col i row 0
+   start_pos = i*regMat.n_rows;
+   regsVec.set_size(numRegs(i)*M);
+   for(unsigned int loop_j = 0; loop_j< M*numRegs(i); loop_j++)
+    regsVec[loop_j] = regMat[start_pos + loop_j];  
+}
+
+// .. C and X are NOT passed by reference
+void updateCoefficients_reg(   mat& B, const int& i, const urowvec& links_on, const mat& lambxCPlusS, 
+			       const rowvec& lambxCplusIdot_i, const ucolvec& indxRegs)
+{
+  // .. Declare vars
+  mat                     covarianceMatrixB,  lambxCPlusSReduced;
+  rowvec        lambxCplusIdotReduced, lambxCplusIdotReduced_aux;
+  unsigned int                                            num_on;
+  colvec                                         aux_mu_B, b_new;
+  uvec                                                   regsVec;
+  
+  // .. Make sure there is at least one link
+  regsVec = find(links_on);
+  if(regsVec.n_elem>0){	
+      // .. Calculate logMVPDF for current state of gamma_row
+      subMatFromIndices(lambxCPlusSReduced, lambxCPlusS, regsVec);
+      subVectorFromIndices(lambxCplusIdotReduced, lambxCplusIdot_i, regsVec);
+
+//   // .. Before updating links, check if any need updating
+//   num_on   = accu(links_on);
+//   if (num_on>0)
+//   {
+//       // .. Aux variables for B    
+//       subMatFromVector(lambxCPlusSReduced, lambxCPlusS, links_on);
+//       subVectorFromVector(lambxCplusIdotReduced, lambxCplusIdot_i, links_on);
+
+
+      // .. B Covariance matrix
+      covarianceMatrixB = inv(lambxCPlusSReduced);
+      // .. Correct precision => symmetry problem
+//       covarianceMatrixB = (covarianceMatrixB + trans(covarianceMatrixB))/2;
+      symmetriseMat(covarianceMatrixB);  
+      // .. Update B for links that are ON
+      aux_mu_B  = covarianceMatrixB*trans(lambxCplusIdotReduced);
+      b_new     = mvnrnd(aux_mu_B, covarianceMatrixB);
+  }
+  // .. Update B row with new values and zeros
+  fillMatRowWithVecAndZeros_withIndex(B, b_new, i, links_on, indxRegs);
+}
+
+
+
+// .. C and X are NOT passed by reference
+void updateCoefficients(                mat& B,              const int& i, const urowvec& links_on, 
+			const mat& lambxCPlusS, const rowvec& lambxCplusIdot_i)
+{
+  // .. Declare vars
+  mat                     covarianceMatrixB,  lambxCPlusSReduced;
+  rowvec        lambxCplusIdotReduced, lambxCplusIdotReduced_aux;
+  unsigned int                                            num_on;
+  colvec                                         aux_mu_B, b_new;
+  uvec                                                   regsVec;
+  
+  
+  // .. Make sure there is at least one link
+  regsVec = find(links_on);
+  if(regsVec.n_elem>0){	
+      // .. Calculate logMVPDF for current state of gamma_row
+      subMatFromIndices(lambxCPlusSReduced, lambxCPlusS, regsVec);
+      subVectorFromIndices(lambxCplusIdotReduced, lambxCplusIdot_i, regsVec);
+
+//   // .. Before updating links, check if any need updating
+//   num_on   = accu(links_on);
+//   if (num_on>0)
+//   {
+//       // .. Aux variables for B    
+//       subMatFromVector(lambxCPlusSReduced, lambxCPlusS, links_on);
+//       subVectorFromVector(lambxCplusIdotReduced, lambxCplusIdot_i, links_on);
+
+      // .. B Covariance matrix
+      covarianceMatrixB = inv(lambxCPlusSReduced);
+      // .. Correct precision => symmetry problem
+//       covarianceMatrixB = (covarianceMatrixB + trans(covarianceMatrixB))/2;
+      symmetriseMat(covarianceMatrixB);  
+
+      // .. Update B for links that are ON
+      aux_mu_B  = covarianceMatrixB*trans(lambxCplusIdotReduced);
+      b_new     = mvnrnd(aux_mu_B, covarianceMatrixB);
+  }
+  // .. Update B row with new values and zeros
+  fillMatRowWithVecAndZeros(B, b_new, i, links_on);
 }
 
 

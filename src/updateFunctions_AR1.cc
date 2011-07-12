@@ -9,12 +9,17 @@ using namespace arma;
 #include <string>
 #include "commonFunctions.h"
 #include "matrixManipulationFunctions.h"
+#include <google/profiler.h>
 
 
-void MHStep(urowvec& gamma_Row,  double& logMVPDF_Old, const unsigned int& i, const unsigned int& j, const mat& lambxCPlusS,   const mat& lambxCplusIdot, const double& sumLogs);
-void calc_logMVPDF_withLinks(double& logMVPDF, const mat& lambxCPlusS , const mat& lambxCplusIdot, const unsigned int& i, urowvec& gamma_Row);
-void updateCoefficients(                mat& B,              const int& i, const urowvec& links_on, 
-			const mat& lambxCPlusS, const mat& lambxCplusIdot);
+void MHStep(urowvec& gamma_Row,  double& logMVPDF_Old, const unsigned int& j, const mat& lambxCPlusS,   const rowvec& lambxCplusIdot, const double& sumLogs);
+void calc_logMVPDF_withLinks(double& logMVPDF, const mat& lambxCPlusS , const rowvec& lambxCplusIdot, urowvec& gamma_Row);
+void makeParametersRegression_i(   mat &lambxCPlusS, rowvec &lambxCplusIdot,   urowvec &links_on, 
+				 urowvec &updateVec,   const umat &updateMe,    ucolvec &regsVec, 
+				              int i,           const mat &C,    const mat &Cplus, 
+				  const colvec &eta,   const umat &gamma_ij, double prior_prec_B,
+			        ucolvec &numRegsVec);
+
 
 
 void openOutputFiles_AR1(string& ResultsFolder, FILE* &Bfile, FILE* &MuFile, FILE* &RhoFile, FILE* &LambFile, FILE* &GammaFile)
@@ -109,12 +114,12 @@ void updateCoeffAndGibbsVars(mat& B,   umat& gamma_ij, const colvec& eta, const 
     {   
       // .. Calculate constants for gene i  
       lambxCPlusS    = eta(i)*C+precMatrix;
-      lambxCplusIdot = eta(i)*Cplus;
+      lambxCplusIdot = eta(i)*Cplus.row(i);
       // .. Links in row i that are on
       links_on = gamma_ij.row(i); 
      
       // .. Calculate logMVPDF for this link config
-      calc_logMVPDF_withLinks(logMVPDF_Old, lambxCPlusS, lambxCplusIdot, i, links_on);      
+      calc_logMVPDF_withLinks(logMVPDF_Old, lambxCPlusS, lambxCplusIdot, links_on);      
       
       // .. Random permutation of update index
       random_intSequence(seq_rnd);
@@ -130,7 +135,7 @@ void updateCoeffAndGibbsVars(mat& B,   umat& gamma_ij, const colvec& eta, const 
 	{
 	  // .. MH update link i,j We reuse logMVPDF_Old (value 
 	  // .. for current state of gamma_row)
-	  MHStep(links_on, logMVPDF_Old, i, j, lambxCPlusS, lambxCplusIdot, logRosMinlogS);
+	  MHStep(links_on, logMVPDF_Old, j, lambxCPlusS, lambxCplusIdot, logRosMinlogS);
 	}
       }      
       
@@ -143,95 +148,67 @@ void updateCoeffAndGibbsVars(mat& B,   umat& gamma_ij, const colvec& eta, const 
 }
 
 
-void updateCoeffAndGibbsVars_reg(mat& B,   umat& gamma_ij, const colvec& eta, const mat& C, const mat& Cplus, const mat& precMatrix, 
-			     const double & logRosMinlogS, const unsigned int & genes, const umat& UpdateMe)
+void updateCoeffAndGibbsVars_reg(mat& B,   umat& gamma_ij, const colvec& eta, const mat& C, const mat& Cplus, double prior_prec_B, 
+			     const double & logRosMinlogS, const unsigned int & genes, umat& UpdateMe,
+			     ucolvec &numRegsVec,      umat &regMat)
 {
     // Declare vars
-    mat            lambxCplusIdot, lambxCPlusSReduced, lambxCPlusS;
+    mat                            lambxCPlusSReduced, lambxCPlusS;
     rowvec        lambxCplusIdotReduced, lambxCplusIdotReduced_aux;
-    urowvec                                               links_on;
+    urowvec                                        links_on(genes);
     double                                            logMVPDF_Old;
     unsigned int                                                 i;
     int                                                          j;
-    ucolvec                                         seq_rnd(genes);
+    ucolvec                                                seq_rnd;
+    rowvec                                          lambxCplusIdot;
+    urowvec                                             updateVec ;
+    ucolvec                                                regsVec;
     
     // .. Loop over rows i of matrix
     for(i = 0; i < genes;i++)
     {   
-      // .. Calculate constants for gene i  
-      lambxCPlusS    = eta(i)*C+precMatrix;
-      lambxCplusIdot = eta(i)*Cplus;
-      // .. Links in row i that are on
-      links_on = gamma_ij.row(i); 
-     
+      // Get vector with indices of regulators
+      getRegsVec(regsVec, numRegsVec, regMat, i);
+      
+      // .. Calculate parameters for iteration 
+      makeParametersRegression_i( lambxCPlusS, lambxCplusIdot,   links_on, updateVec, UpdateMe,
+				      regsVec,              i,          C,     Cplus,      eta,
+				     gamma_ij,   prior_prec_B, numRegsVec);
+      
       // .. Calculate logMVPDF for this link config
-      calc_logMVPDF_withLinks(logMVPDF_Old, lambxCPlusS, lambxCplusIdot, i, links_on);      
+      calc_logMVPDF_withLinks(logMVPDF_Old, lambxCPlusS, lambxCplusIdot, links_on);      
       
       // .. Random permutation of update index
+      seq_rnd.set_size(numRegsVec(i));
       random_intSequence(seq_rnd);
       
       // .. Loop over elements of row i and sample from gamma
-      for(int j_loop = 0; j_loop < genes; j_loop++)
+      for(int j_loop = 0; j_loop < seq_rnd.n_elem; j_loop++)
       {
 	// .. Get permuted index
 	j = seq_rnd[j_loop];
-
 	// .. Update non fixed links (self interaction is by default fixed)
-	if (UpdateMe(i, j))
+	if (updateVec(j))
 	{
 	  // .. MH update link i,j We reuse logMVPDF_Old (value 
 	  // .. for current state of gamma_row)
-	  MHStep(links_on, logMVPDF_Old, i, j, lambxCPlusS, lambxCplusIdot, logRosMinlogS);
+	  MHStep(links_on, logMVPDF_Old, j, lambxCPlusS, lambxCplusIdot, logRosMinlogS);
 	}
-      }      
-      
+      }       
       // .. Update gamma matrix with new row
-      gamma_ij.row(i) = links_on;  
+      fillMatRowWithIndx_u(gamma_ij, links_on, i, regsVec);
+
       // .. Update coefficients
-      updateCoefficients(B,i, links_on, lambxCPlusS, lambxCplusIdot);
+      updateCoefficients_reg(B, i, links_on, lambxCPlusS, lambxCplusIdot, regsVec);      
    }
-
-}
-
-
-
-// .. C and X are NOT passed by reference
-void updateCoefficients(                mat& B,              const int& i, const urowvec& links_on, 
-			const mat& lambxCPlusS, const mat& lambxCplusIdot)
-{
-  // .. Declare vars
-  mat                     covarianceMatrixB,  lambxCPlusSReduced;
-  rowvec        lambxCplusIdotReduced, lambxCplusIdotReduced_aux;
-  unsigned int                                                    num_on;
-  colvec                                         aux_mu_B, b_new;
-  
-  // .. Before updating links, check if any need updating
-  num_on   = accu(links_on);
-  if (num_on>0)
-  {
-      // .. Aux variables for B    
-      subMatFromVector(lambxCPlusSReduced, lambxCPlusS, links_on);
-      lambxCplusIdotReduced_aux = lambxCplusIdot.row(i);
-      subVectorFromVector(lambxCplusIdotReduced, lambxCplusIdotReduced_aux, links_on);
-
-      // .. B Covariance matrix
-      covarianceMatrixB = inv(lambxCPlusSReduced);
-      // .. Correct precision => symmetry problem
-      covarianceMatrixB = (covarianceMatrixB + trans(covarianceMatrixB))/2;
-      // .. Update B for links that are ON
-      aux_mu_B  = covarianceMatrixB*trans(lambxCplusIdotReduced);
-      b_new     = mvnrnd(aux_mu_B, covarianceMatrixB);
-  }
-  // .. Update B row with new values and zeros
-  fillMatRowWithVecAndZeros(B, b_new, i, links_on);
 }
 
 
 // .. Metropolis-Hastings move to update a gamma_ij
 // .. NOTE: Using log porbabilities. Always calculate move from
 // .. link off to on. If move is inverese then multiply by -1
-void MHStep(    urowvec& gamma_Row,  double& logMVPDF_Old,         const unsigned int& i, const unsigned int& j, 
-	    const mat& lambxCPlusS,   const mat& lambxCplusIdot, const double& sumLogs)
+void MHStep(    urowvec& gamma_Row,  double& logMVPDF_Old,       const unsigned int& j, 
+	    const mat& lambxCPlusS,   const rowvec& lambxCplusIdot_i, const double& sumLogs)
 {
   // .. Vars
   unsigned int                                  gamma_old;  
@@ -244,7 +221,7 @@ void MHStep(    urowvec& gamma_Row,  double& logMVPDF_Old,         const unsigne
   if (gamma_old){ gamma_Row(j) = 0; }else{ gamma_Row(j) = 1;}
 
   // .. Calculate logMVPDF for this link config
-  calc_logMVPDF_withLinks(logMVPDF_new, lambxCPlusS, lambxCplusIdot, i, gamma_Row );
+  calc_logMVPDF_withLinks(logMVPDF_new, lambxCPlusS, lambxCplusIdot_i, gamma_Row );
 
   // .. Which is logMVPDF for gamma_ij=1 and which for gamma_ij=0
   if (gamma_old){    
@@ -281,20 +258,23 @@ void MHStep(    urowvec& gamma_Row,  double& logMVPDF_Old,         const unsigne
 }
 
 
-void calc_logMVPDF_withLinks(double& logMVPDF, const mat& lambxCPlusS , const mat& lambxCplusIdot, const unsigned int& i, urowvec& gamma_Row)
+void calc_logMVPDF_withLinks(double& logMVPDF, const mat& lambxCPlusS , const rowvec& lambxCplusIdot_i, urowvec& gamma_Row)
 {
   // .. Vars
   unsigned int                                            num_on;  
   mat                                         lambxCPlusSReduced;
-  rowvec        lambxCplusIdotReduced_aux, lambxCplusIdotReduced;
+  rowvec                                   lambxCplusIdotReduced;
+  uvec                                                   regsVec;
   
   // .. Make sure there is at least one link
-  num_on   = accu(gamma_Row);
-  if(num_on>0){	
+  regsVec = find(gamma_Row);
+//   num_on   = accu(gamma_Row);
+  if(regsVec.n_elem>0){	
       // .. Calculate logMVPDF for current state of gamma_row
-      subMatFromVector(lambxCPlusSReduced, lambxCPlusS, gamma_Row);
-      lambxCplusIdotReduced_aux = lambxCplusIdot.row(i);
-      subVectorFromVector(lambxCplusIdotReduced, lambxCplusIdotReduced_aux, gamma_Row);
+//       subMatFromVector(lambxCPlusSReduced, lambxCPlusS, gamma_Row);
+      subMatFromIndices(lambxCPlusSReduced, lambxCPlusS, regsVec);
+//       subVectorFromVector(lambxCplusIdotReduced, lambxCplusIdot_i, gamma_Row);
+      subVectorFromIndices(lambxCplusIdotReduced, lambxCplusIdot_i, regsVec);
       MHlogMVPDF(logMVPDF, lambxCPlusSReduced, lambxCplusIdotReduced);
   }
   else{
@@ -302,4 +282,25 @@ void calc_logMVPDF_withLinks(double& logMVPDF, const mat& lambxCPlusS , const ma
   }
 }
 
+void makeParametersRegression_i(   mat &lambxCPlusS, rowvec &lambxCplusIdot,   urowvec &links_on, 
+				 urowvec &updateVec,   const umat &updateMe,    ucolvec &regsVec, 
+				              int i,           const mat &C,    const mat &Cplus, 
+				  const colvec &eta,   const umat &gamma_ij, double prior_prec_B,
+			        ucolvec &numRegsVec)
+{
+//   ucolvec indx_regs;
+  subMatFromIndices(lambxCPlusS, C, regsVec);
+
+  // .. Calculate constants for gene i 
+  // precision mat vals
+  lambxCPlusS        = eta(i)*lambxCPlusS;
+  lambxCPlusS.diag() = lambxCPlusS.diag()+ prior_prec_B; 
+  
+  subVectorFromIndx_MatRow(lambxCplusIdot, Cplus, i, regsVec);
+
+  lambxCplusIdot     = eta(i)*lambxCplusIdot;
+
+  subVectorFromIndx_MatRow_u(updateVec, updateMe, i, regsVec);
+  subVectorFromIndx_MatRow_u(links_on, gamma_ij, i, regsVec);      
+}
 

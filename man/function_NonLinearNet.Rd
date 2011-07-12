@@ -6,7 +6,8 @@ Run Bayesian inference of non-linear interaction network. Non linear interaction
 Penalised Splines. The function generates MCMC chains that can later be analysed.
 }
 \usage{
-NonLinearNet(resultsFolder, timeSeries, ParamVec = NULL, chains = 2, user.seeds = NULL)
+NonLinearNet(     resultsFolder, timeSeries, ParamVec = NULL, chains = 2, user.seeds = NULL,
+              Regulators = NULL, fixMe = NULL) 
 }
 \arguments{
 \item{resultsFolder}{Name of output folder. The folder will be created and the output of the run will be placed there.}
@@ -17,7 +18,14 @@ default parameters will be used. The vector contains parameters associated to th
 run length. (See mcmc.defaultParams_nonLinear)}
 \item{chains}{Number of MCMC chains to run.}
 \item{user.seeds}{An optional vector with seeds to use for MCMC chains.}
+\item{Regulators}{An optional vector with the indices of which genes are regulators. If
+provided, all non-regulator genes will not be allowed to regulate.}
+\item{fixMe}{An optional matrix of size genes x genes, where columns represent regulators and 
+rows regulated genes. The matrix informs the model of network connections known to be present/absent.
+For each position use either 0 (no regulation, fix off), 1 (known regulatory interaction, fix on) 
+or NaN (no information, do not fix).}
 }
+
 \value{
 For each chain run, a folder (chain1, chain2, ...) will be created and the output of the MCMC run will
 be placed there. The files will be Gamma_mcmc (the indicator variables of Gibbs variable selection), 
@@ -30,8 +38,9 @@ placing all interactions for each regression one after another.
 }
 
 \references{
-Morrissey, E.R., Juarez, M.A., Denby, K.J. and Burroughs, N.J. 2011.  Inferring the topology of a non-linear sparse 
-gene regulatory network using fully Bayesian spline regression. (submitted)
+Morrissey, E.R., Juarez, M.A., Denby, K.J. and Burroughs, N.J. 2011 Inferring the time-invariant 
+topology of a nonlinear sparse gene regulatory network using fully Bayesian spline autoregression
+Biostatistics 2011; doi: 10.1093/biostatistics/kxr009
 }
 \seealso{
 \code{\link{mcmc.defaultParams_nonLinear}, \link{analyse.output}}.
