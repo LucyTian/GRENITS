@@ -6,8 +6,9 @@ Run Bayesian inference of linear interaction network. The function generates MCM
 analysed.
 }
 \usage{
-LinearNet(    resultsFolder,   timeSeries, ParamVec = NULL, chains = 2, user.seeds = NULL, 
-          Regulators = NULL, fixMe = NULL)
+LinearNet( resultsFolder,        timeSeries,   ParamVec = NULL, 
+              chains = 2, user.seeds = NULL, Regulators = NULL, 
+	    fixMe = NULL)
 }
 \arguments{
 \item{resultsFolder}{Name of output folder. The folder will be created and the output of the run 

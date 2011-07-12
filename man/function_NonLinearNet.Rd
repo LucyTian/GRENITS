@@ -6,8 +6,9 @@ Run Bayesian inference of non-linear interaction network. Non linear interaction
 Penalised Splines. The function generates MCMC chains that can later be analysed.
 }
 \usage{
-NonLinearNet(     resultsFolder, timeSeries, ParamVec = NULL, chains = 2, user.seeds = NULL,
-              Regulators = NULL, fixMe = NULL) 
+NonLinearNet( resultsFolder,        timeSeries,   ParamVec = NULL, 
+		 chains = 2, user.seeds = NULL, Regulators = NULL,      
+	       fixMe = NULL) 
 }
 \arguments{
 \item{resultsFolder}{Name of output folder. The folder will be created and the output of the run will be placed there.}

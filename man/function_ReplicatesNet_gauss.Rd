@@ -6,8 +6,9 @@ Run Bayesian inference of linear interaction network on data with replicates. Th
 to follow a Gaussian distribution. The function generates MCMC chains that can later be analysed.
 }
 \usage{
-ReplicatesNet_gauss(    resultsFolder,   timeSeries, numReps, ParamVec = NULL, chains = 2, user.seeds = NULL,
-		    Regulators = NULL, fixMe = NULL)
+ReplicatesNet_gauss(     resultsFolder,   timeSeries,           numReps, 
+                       ParamVec = NULL,   chains = 2, user.seeds = NULL,
+		     Regulators = NULL, fixMe = NULL)
 }
 \arguments{
 \item{resultsFolder}{Name of output folder. The folder will be created and the output of the run 

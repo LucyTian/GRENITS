@@ -6,7 +6,8 @@ Run Bayesian inference of linear interaction network on data with replicates. Th
 to follow a Student distribution. The function generates MCMC chains that can later be analysed.
 }
 \usage{
-ReplicatesNet_student(     resultsFolder,   timeSeries, numReps, ParamVec = NULL, chains = 2, user.seeds = NULL,
+ReplicatesNet_student(     resultsFolder,   timeSeries,           numReps, 
+		         ParamVec = NULL,   chains = 2, user.seeds = NULL,
 		       Regulators = NULL, fixMe = NULL)
 }
 \arguments{
