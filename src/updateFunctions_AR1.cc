@@ -9,7 +9,7 @@ using namespace arma;
 #include <string>
 #include "commonFunctions.h"
 #include "matrixManipulationFunctions.h"
-#include <google/profiler.h>
+// #include <google/profiler.h>
 
 
 void MHStep(urowvec& gamma_Row,  double& logMVPDF_Old, const unsigned int& j, const mat& lambxCPlusS,   const rowvec& lambxCplusIdot, const double& sumLogs);
