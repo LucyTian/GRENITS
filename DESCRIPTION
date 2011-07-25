@@ -1,8 +1,8 @@
 Package: GRENITS
 Type: Package
 Title: Gene Regulatory Network Inference Using Time Series
-Version: 0.99.1
-Date: 2011-07-11
+Version: 1.5.1
+Date: 2011-07-24
 Author: Edward Morrissey
 Maintainer: Edward Morrissey <edward.morrissey@gmail.com>
 Description: The package offers four network inference statistical models using Dynamic Bayesian Networks and Gibbs Variable Selection: a linear interaction model, two linear interaction models with added experimental noise (Gaussian and Student distributed) for the case where replicates are available and a non-linear interaction model.
