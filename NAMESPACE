@@ -8,6 +8,6 @@ exportPattern("^[[:alpha:]]+")
 importFrom(graphics, barplot, legend, lines, mtext, par, plot, points,
             polygon,   title)
 importFrom(grDevices, dev.off, pdf)
-importFrom(reshape, melt)
+importFrom(reshape2, melt)
 importFrom(stats, dbeta, density, dgamma, dnorm)
 importFrom(utils, read.table, write.table)

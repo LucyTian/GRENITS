@@ -1,15 +1,15 @@
 Package: GRENITS
 Type: Package
 Title: Gene Regulatory Network Inference Using Time Series
-Version: 1.7.0
-Date: 2011-07-24
+Version: 1.7.1
+Date: 2012-03-15
 Author: Edward Morrissey
 Maintainer: Edward Morrissey <edward.morrissey@gmail.com>
 Description: The package offers four network inference statistical models using Dynamic Bayesian Networks and Gibbs Variable Selection: a linear interaction model, two linear interaction models with added experimental noise (Gaussian and Student distributed) for the case where replicates are available and a non-linear interaction model.
 License: GPL (>= 2)
 LazyLoad: yes
-Depends: R (>= 2.12.0), Rcpp (>= 0.8.6), RcppArmadillo (>= 0.2.8), ggplot2
-Imports: graphics, grDevices, reshape, stats, utils
+Depends: R (>= 2.12.0), Rcpp (>= 0.8.6), RcppArmadillo (>= 0.2.8), ggplot2 (>= 0.9.0)
+Imports: graphics, grDevices, reshape2, stats, utils
 Suggests: network
 LinkingTo: Rcpp, RcppArmadillo
 biocViews: Bioinformatics, TimeCourse, GraphsAndNetworks

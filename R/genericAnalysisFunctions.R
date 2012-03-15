@@ -191,7 +191,7 @@
 	title.string     <- paste(title.string, "(Selected genes)")
       }
       all.m <- melt(as.matrix(prob.mat))
-      (p <- ggplot(all.m, aes(X2, X1)) + 
+      (p <- ggplot(all.m, aes(Var2, Var1)) + 
       geom_tile(aes(fill = value),colour = "white") + 
       scale_fill_gradient(low = "white",     high = "steelblue", limits = c(0,1)) +
       opts(axis.ticks = theme_blank(), axis.text.x = theme_text(angle = 30, hjust = 1), 
