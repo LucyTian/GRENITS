@@ -1,7 +1,7 @@
 Package: GRENITS
 Type: Package
 Title: Gene Regulatory Network Inference Using Time Series
-Version: 1.7.1
+Version: 1.8.0
 Date: 2012-03-15
 Author: Edward Morrissey
 Maintainer: Edward Morrissey <edward.morrissey@gmail.com>
