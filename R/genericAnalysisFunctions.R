@@ -247,7 +247,7 @@
   ## Filter out those with prob[0 parents] > 0.6
   remove.these <- which(numParentsProbs.final[,4] > 0.5)
   # Remove only if more than 20 would be left
-  if (numNonReg-length(remove.these) > 20)
+  if ((numNonReg-length(remove.these) > 20) & (length(remove.these)!=0))
   {
      matHighLinks          <- matHighLinks[-1*remove.these,]
      numParentsProbs.final <- numParentsProbs.final[-1*remove.these,]
@@ -273,7 +273,9 @@
       labs(x = "",y="") +
       scale_x_discrete(expand = c(0, 0)) +
       scale_y_discrete(expand = c(0, 0)) +  
-      facet_grid( Same ~ ProbType, scales = "free")
+      #facet_grid( Same ~ ProbType, scales = "free")
+      facet_wrap( ~ProbType, ncol = 2, scales = "free")
+     
     )
     ## Save
     print(p)
