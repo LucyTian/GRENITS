@@ -184,18 +184,18 @@
       ## If too large, sub select
       if(dim(prob.mat)[1]> size.max)
       {
-	topNumLinks <- floor(size.max/2)
-	prob.mat.largest <- order(prob.mat, decreasing= T)
-	rowsAndCols      <- as.vector(.getSquareMatIndicesFromFlat(prob.mat.largest[1:topNumLinks], dim(prob.mat)[1]))
-	prob.mat         <- prob.mat[rowsAndCols, rowsAndCols]
-	title.string     <- paste(title.string, "(Selected genes)")
+      	topNumLinks      <- floor(size.max/2)
+      	prob.mat.largest <- order(prob.mat, decreasing= T)
+      	rowsAndCols      <- as.vector(.getSquareMatIndicesFromFlat(prob.mat.largest[1:topNumLinks], dim(prob.mat)[1]))
+      	prob.mat         <- prob.mat[rowsAndCols, rowsAndCols]
+      	title.string     <- paste(title.string, "(Selected genes)")
       }
       all.m <- melt(as.matrix(prob.mat))
       (p <- ggplot(all.m, aes(Var2, Var1)) + 
       geom_tile(aes(fill = value),colour = "white") + 
       scale_fill_gradient(low = "white",     high = "steelblue", limits = c(0,1)) +
-      opts(axis.ticks = theme_blank(), axis.text.x = theme_text(angle = 30, hjust = 1), 
-      title = title.string) +
+      theme(axis.ticks = element_blank(), axis.text.x = element_text(angle = 30, hjust = 1)) +
+      ggtitle( title.string) +
       labs(x = "Regulator", y = "Regulated") +
       scale_x_discrete(expand = c(0, 0)) +
       scale_y_discrete(expand = c(0, 0)) 
@@ -269,7 +269,8 @@
     (p <- ggplot(all.m, aes(variable, GeneNames)) + 
       geom_tile(aes(fill = value),colour = "white") + 
       scale_fill_gradient(low = "white",     high = "steelblue", limits = c(0,1)) +
-      opts(title = "Network Uncertainty", axis.ticks = theme_blank(), axis.text.x = theme_text(angle = 30, hjust = 1)) +
+      theme(axis.ticks = element_blank(), axis.text.x = element_text(angle = 30, hjust = 1)) +
+      ggtitle("Network Uncertainty") +
       labs(x = "",y="") +
       scale_x_discrete(expand = c(0, 0)) +
       scale_y_discrete(expand = c(0, 0)) +  

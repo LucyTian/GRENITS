@@ -293,14 +293,14 @@ void estimateTime_AllowCancel(ucolvec& informTimeFlag_vec, int iteration_k, int 
     // .. If different from -1
     if(time_left > 0.)
     {
-      cout << "Estimated runtime = " << time_left << " min" << endl;
+      Rcpp::Rcout << "Estimated runtime = " << time_left << " min" << endl;
       // Summary has already been given
       informTimeFlag_vec[0] = 0;
     }  
   }
   if(percent_done==25 or percent_done==50 or percent_done==75)
   {
-    cout << percent_done << "% completed" << endl;
+    Rcpp::Rcout << percent_done << "% completed" << endl;
   }
   
   // .. Allow for user interrupt
