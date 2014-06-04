@@ -18,8 +18,8 @@ using namespace arma;
 
 
 // LAPACK function
-extern "C" void arma_fortran(dtrtrs)(char *uplo, char *trans, char *diag, blas_int *n, blas_int *nrhs, double *a, 
-				     blas_int *lda, double *b, blas_int * ldb, blas_int *info);  
+//extern "C" void arma_fortran(dtrtrs)(char *uplo, char *trans, char *diag, blas_int *n, blas_int *nrhs, double *a, 
+//				     blas_int *lda, double *b, blas_int * ldb, blas_int *info);  
 void solve_Tri_LAPACK(mat& R, colvec& v);
 void estimateRemainingTime(double& percent_done, double& time_left, int length, 
 			   int iteration_k, clock_t& start);
@@ -139,7 +139,7 @@ void solve_Tri_LAPACK(mat& R, colvec& v)
   blas_int               info_out;
   blas_int                 nrhs=1;
 
-  arma_fortran(dtrtrs)( &upper_tri, &trs, &nu, &m, &nrhs, R.memptr(), 
+  arma_fortran(arma_dtrtrs)( &upper_tri, &trs, &nu, &m, &nrhs, R.memptr(), 
                                      &m, v.memptr(), &m, &info_out);      
 }
 
